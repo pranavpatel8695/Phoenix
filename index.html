@@ -895,8 +895,9 @@
   .tracker-route-meta { font-size:11px; color:var(--muted); margin-bottom:14px; }
 
   /* Gantt grid */
-  .gantt-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .gantt-table { border-collapse:collapse; min-width:100%; }
+  .gantt-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; cursor:grab; }
+  .gantt-wrap:active { cursor:grabbing; }
+  .gantt-table { border-collapse:collapse; min-width:100%; transform-origin:top left; transition:none; }
   .gantt-label-col { width:90px; min-width:90px; }
   .gantt-row-label {
     font-size:11px; font-weight:600; color:var(--muted);
@@ -1334,6 +1335,11 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
           <div class="rb-title">Concrete Work</div>
           <div class="rb-sub">CC Encasing · RCC Encasing</div>
         </button>
+        <button class="report-btn" onclick="selectForm('fitting')" id="rb-fitting" style="border-top:3px solid #5AC8FA;grid-column:span 2">
+          <span class="rb-icon">🔗</span>
+          <div class="rb-title">Fittings</div>
+          <div class="rb-sub">Tee · Bend · Reducer · Flange · Coupling</div>
+        </button>
       </div>
 
       <!-- EXCAVATION FORM -->
@@ -1679,6 +1685,14 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
           <div class="photo-previews" id="val-photo-prev"></div>
         </div>
         <div class="field-group">
+          <label>Chamber Required?</label>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <div class="radio-opt" onclick="selectValveChamber(this,'Yes')" style="flex:1;text-align:center">✅ Yes</div>
+            <div class="radio-opt" onclick="selectValveChamber(this,'No')" style="flex:1;text-align:center">❌ No</div>
+          </div>
+          <input type="hidden" id="val-chamber-req" value="">
+        </div>
+        <div class="field-group">
           <label>Remarks</label>
           <textarea id="val-remarks" rows="2" placeholder="Any notes..."></textarea>
         </div>
@@ -1710,7 +1724,10 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
 
         <!-- Select from reported valves -->
         <div class="field-group">
-          <label>Select Valve (from reported valves on this route)</label>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label style="margin-bottom:0">Select Valve <span style="color:var(--muted);font-weight:400">(Chamber Required = Yes)</span></label>
+            <button type="button" onclick="loadValveFlags()" style="font-size:11px;padding:4px 10px;border-radius:6px;background:rgba(255,149,0,0.1);border:1px solid rgba(255,149,0,0.35);color:#FF9500;cursor:pointer">🔄 Refresh</button>
+          </div>
           <div id="cham-valve-picker" style="margin-bottom:4px">
             <div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border);border-radius:8px;text-align:center">
               Select a project &amp; route first
@@ -1753,15 +1770,20 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
               <div class="radio-opt" onclick="selectRadio(this,'cham-slab','Precast');togglePrecastInstalled('Precast')" style="flex:1;text-align:center;font-size:12px">🧱 Precast</div>
             </div>
             <input type="hidden" id="cham-slab" value="">
-            <!-- Precast installed toggle — shown only for Precast -->
-            <div id="precast-installed-wrap" style="display:none;margin-top:8px">
-              <label style="font-size:12px;color:var(--muted)">Slab Installed?</label>
-              <div class="radio-group" style="gap:6px;margin-top:4px">
-                <div class="radio-opt" onclick="selectRadio(this,'cham-slab-installed','Yes')" style="flex:1;text-align:center;font-size:12px">✅ Yes</div>
-                <div class="radio-opt" onclick="selectRadio(this,'cham-slab-installed','No')" style="flex:1;text-align:center;font-size:12px">❌ Not Yet</div>
-              </div>
+            <!-- Precast installed toggle — kept for data compat but hidden -->
+            <div id="precast-installed-wrap" style="display:none">
               <input type="hidden" id="cham-slab-installed" value="">
             </div>
+            <!-- Precast kept toggle -->
+            <div id="precast-kept-wrap" style="display:none;margin-top:8px">
+              <label style="font-size:12px;color:var(--muted)">Precast Kept?</label>
+              <div class="radio-group" style="gap:6px;margin-top:4px">
+                <div class="radio-opt" onclick="selectRadio(this,'cham-slab-kept','Kept')" style="flex:1;text-align:center;font-size:12px">✅ Kept</div>
+                <div class="radio-opt" onclick="selectRadio(this,'cham-slab-kept','Not Kept')" style="flex:1;text-align:center;font-size:12px">❌ Not Kept</div>
+              </div>
+              <input type="hidden" id="cham-slab-kept" value="">
+            </div>
+          </div>
           </div>
         </div>
 
@@ -1981,6 +2003,81 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
         </div>
       </div>
 
+      <!-- FITTINGS FORM -->
+      <div class="form-section card hidden" id="form-fitting">
+        <div class="card-title" style="border-left:3px solid #5AC8FA;padding-left:10px;margin-left:-2px">🔗 Fittings Report</div>
+
+        <div class="field-group">
+          <label>Project <span style="color:#FF453A">*</span></label>
+          <select id="fit-project" onchange="updateRoutes('fit')"></select>
+        </div>
+        <div class="field-group">
+          <label>Date <span style="color:#FF453A">*</span></label>
+          <input type="date" id="fit-date">
+        </div>
+        <div class="field-group">
+          <label>Pipeline Route <span style="color:#FF453A">*</span></label>
+          <div class="route-selector" id="fit-routes"></div>
+          <input type="hidden" id="fit-route" value="">
+        </div>
+        <div class="field-group">
+          <label>Chainage (m) <span style="color:#FF453A">*</span></label>
+          <input type="number" id="fit-chainage" placeholder="e.g. 1200">
+        </div>
+        <div class="field-group">
+          <label>Type of Fitting <span style="color:#FF453A">*</span></label>
+          <div id="fit-type-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:4px">
+            <div class="radio-opt" onclick="selectFittingType(this,'Tee')">🔀 Tee</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Bend 90°')">↩️ Bend 90°</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Bend 45°')">↪️ Bend 45°</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Reducer')">🔻 Reducer</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Flange')">⭕ Flange</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Coupling')">🔗 Coupling</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Cap/Blank')">🔵 Cap/Blank</div>
+            <div class="radio-opt" onclick="selectFittingType(this,'Other')">📝 Other</div>
+          </div>
+          <input type="hidden" id="fit-type" value="">
+          <input type="text" id="fit-type-other" placeholder="Specify fitting type" style="margin-top:6px;display:none">
+        </div>
+        <div class="field-group">
+          <label>Quantity</label>
+          <input type="number" id="fit-qty" placeholder="No. of fittings" min="1" value="1">
+        </div>
+        <div class="field-group">
+          <label>Thrust Block Required?</label>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <div class="radio-opt" onclick="selectThrustBlock(this,'Yes')" style="flex:1;text-align:center">✅ Yes</div>
+            <div class="radio-opt" onclick="selectThrustBlock(this,'No')" style="flex:1;text-align:center">❌ No</div>
+          </div>
+          <input type="hidden" id="fit-thrust" value="">
+        </div>
+        <div class="field-group">
+          <label>GPS Location</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div class="field-group" style="flex:1;margin-bottom:0"><input type="text" id="fit-lat" placeholder="Latitude"></div>
+            <div class="field-group" style="flex:1;margin-bottom:0"><input type="text" id="fit-lon" placeholder="Longitude"></div>
+            <button class="gps-btn" onclick="getGPS('fit-lat','fit-lon')">📍</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Photos</label>
+          <div class="photo-input-wrap" onclick="document.getElementById('fit-photos').click()">
+            <div class="pi-icon">📷</div>
+            <p>Tap to capture / select photos</p>
+            <input type="file" id="fit-photos" multiple accept="image/*" onchange="previewPhotosGPS(this,'fit-photo-prev','fit-lat','fit-lon')">
+          </div>
+          <div class="photo-previews" id="fit-photo-prev"></div>
+        </div>
+        <div class="field-group">
+          <label>Remarks</label>
+          <textarea id="fit-remarks" rows="2" placeholder="Any notes about this fitting..."></textarea>
+        </div>
+        <div class="submit-row">
+          <button class="btn-secondary" onclick="cancelForm()">Cancel</button>
+          <button class="btn-primary flex1" onclick="submitReport('fitting')" style="background:linear-gradient(135deg,#5AC8FA,#0A84FF)">Submit Report ✓</button>
+        </div>
+      </div>
+
     </div>
 
     <!-- ===== MAP TAB ===== -->
@@ -2004,6 +2101,7 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
         <div class="legend-item"><div style="width:22px;height:5px;background:#FF453A;border-radius:3px"></div>Valves</div>
         <div class="legend-item"><div style="width:22px;height:5px;background:#FF9500;border-radius:3px"></div>Chamber</div>
         <div class="legend-item"><div style="width:22px;height:5px;background:#BF5AF2;border-radius:3px"></div>Concrete</div>
+        <div class="legend-item"><div style="width:22px;height:5px;background:#5AC8FA;border-radius:3px"></div>Fittings</div>
       </div>
 
       <!-- Leaflet map -->
@@ -2629,7 +2727,7 @@ function initApp() {
 
 function setTodayDate() {
   const today = new Date().toISOString().split('T')[0];
-  ['exc-date','pipe-date','ref-date','val-date','str-date','cham-date'].forEach(id => {
+  ['exc-date','pipe-date','ref-date','val-date','str-date','cham-date','fit-date'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = today;
   });
@@ -2644,10 +2742,11 @@ function selectForm(type) {
   document.querySelectorAll('.form-section').forEach(f => { f.classList.remove('active'); f.style.display = 'none'; });
   document.getElementById('rb-' + type).classList.add('selected');
   const form = document.getElementById('form-' + type);
+  form.classList.remove('hidden');
   form.style.display = 'block';
   form.classList.add('active');
   // Populate routes for this form
-  const prefixMap = { excavation:'exc', pipe:'pipe', refill:'ref', valve:'val', structure:'str', chamber:'cham' };
+  const prefixMap = { excavation:'exc', pipe:'pipe', refill:'ref', valve:'val', structure:'str', chamber:'cham', fitting:'fit' };
   const pfx = prefixMap[type]; if (pfx) updateRoutes(pfx);
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -2667,10 +2766,45 @@ function cancelForm() {
   ['str-length','str-width','str-height','str-dia','str-vol-trench','str-vol-pipe'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  // Clear fitting form
+  try {
+    document.getElementById('fit-chainage').value = '';
+    document.getElementById('fit-qty').value = '1';
+    document.getElementById('fit-lat').value = '';
+    document.getElementById('fit-lon').value = '';
+    document.getElementById('fit-remarks').value = '';
+    document.getElementById('fit-type').value = '';
+    document.getElementById('fit-type-other').style.display = 'none';
+    document.getElementById('fit-thrust').value = '';
+    document.getElementById('val-chamber-req').value = '';
+    try {
+      document.getElementById('cham-slab-kept').value = '';
+      document.getElementById('precast-kept-wrap').style.display = 'none';
+      document.querySelectorAll('#precast-kept-wrap .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
+    } catch(e2) {}
+    document.querySelectorAll('#form-fitting .field-group .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
+    document.getElementById('fit-photo-prev').innerHTML = '';
+    document.querySelectorAll('#fit-type-grid .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
+  } catch(e2) {}
   _editingReportId = null;
   document.querySelectorAll('.btn-primary.flex1[data-editing]').forEach(b => { b.textContent = 'Submit Report ✓'; delete b.dataset.editing; });
   document.querySelectorAll('.report-btn').forEach(b => b.classList.remove('selected'));
   document.querySelectorAll('.form-section').forEach(f => { f.classList.remove('active'); f.style.display = 'none'; });
+}
+
+function togglePrecastInstalled(val) {
+  const wrap = document.getElementById('precast-installed-wrap');
+  const keptWrap = document.getElementById('precast-kept-wrap');
+  if (!wrap) return;
+  const show = (val === 'Precast');
+  wrap.style.display = 'none'; // slab installed hidden — only kept is used
+  if (keptWrap) keptWrap.style.display = show ? 'block' : 'none';
+  if (!show) {
+    document.getElementById('cham-slab-installed').value = '';
+    document.getElementById('cham-slab-kept').value = '';
+    wrap.querySelectorAll('.radio-opt').forEach(e => e.classList.remove('selected'));
+    if (keptWrap) keptWrap.querySelectorAll('.radio-opt').forEach(e => e.classList.remove('selected'));
+  }
 }
 
 function selectRadio(el, hiddenId, val) {
@@ -2719,7 +2853,7 @@ function selectRoute(el, hiddenId, val) {
     setTimeout(loadEncasingFlags, 50);
   }
   if (prefix === 'cham') {
-    loadValveFlags();
+    setTimeout(loadValveFlags, 50);
   }
   if (prefix === 'pipe') {
     const proj = document.getElementById('pipe-project').value;
@@ -2851,8 +2985,9 @@ function editReport(id) {
       set('cham-length', r.length); set('cham-width', r.width); set('cham-height', r.height);
       if (r.slab) { document.querySelectorAll('#form-chamber .radio-opt').forEach(el => { if(el.textContent.trim()===r.slab) el.classList.add('selected'); }); togglePrecastInstalled(r.slab); }
       set('cham-slab', r.slab);
-      if (r.slabInstalled) { document.querySelectorAll('#precast-installed-wrap .radio-opt').forEach(el => { if(el.textContent.trim()===r.slabInstalled) el.classList.add('selected'); }); }
       set('cham-slab-installed', r.slabInstalled||'');
+      if (r.slabKept) { document.querySelectorAll('#precast-kept-wrap .radio-opt').forEach(el => { if(el.textContent.trim()===r.slabKept) el.classList.add('selected'); }); }
+      set('cham-slab-kept', r.slabKept||'');
       // Re-load valve picker and re-select
       loadValveFlags();
       if (r.valveRef) {
@@ -2920,13 +3055,27 @@ function loadValveFlags() {
   document.getElementById('cham-type').value       = '';
   document.getElementById('cham-selected-info').style.display = 'none';
 
-  const valReports = getReports().filter(r =>
-    r.project === project && r.route === route && r.type === 'valve'
-  );
+  const allValReports = getReports().filter(r => {
+    if (r.project !== project || r.type !== 'valve') return false;
+    if (!route) return true;
+    // match by route id, route name, or if report has no route
+    const routes = getAdminRoutes()[project] || [];
+    const routeObj = routes.find(rt => rt.id === route);
+    return r.route === route ||
+           (routeObj && r.route === routeObj.name) ||
+           !r.route;
+  });
+  const valReports = allValReports.filter(r => r.chamberReq === 'Yes');
 
-  if (!valReports.length) {
+  if (!allValReports.length) {
     picker.innerHTML = `<div style="background:rgba(255,69,58,0.1);border:1px solid rgba(255,69,58,0.3);border-radius:8px;padding:10px 12px;font-size:12px;color:#FF453A">
       ❌ No valve reports on this route. Submit a Valve report first.
+    </div>`;
+    return;
+  }
+  if (!valReports.length) {
+    picker.innerHTML = `<div style="background:rgba(255,149,0,0.1);border:1px solid rgba(255,149,0,0.3);border-radius:8px;padding:10px 12px;font-size:12px;color:#FF9500">
+      🏛️ No valves marked "Chamber Required". Open the Valve report and set Chamber Required = Yes.
     </div>`;
     return;
   }
@@ -2947,7 +3096,14 @@ function loadValveFlags() {
           <span style="font-size:12px;font-weight:600;color:var(--text)">🔧 ${valveList}</span>
           <span style="font-size:11px;color:var(--muted)">Ch: ${r.chainage != null ? r.chainage + 'm' : '?'}</span>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.date || ''} · ${r.supervisor || ''}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+          <span style="font-size:11px;color:var(--muted)">${r.date || ''} · ${r.supervisor || ''}</span>
+          ${r.chamberReq==='Yes'
+            ? '<span style="font-size:10px;font-weight:700;color:#FF9500;background:rgba(255,149,0,0.12);border:1px solid rgba(255,149,0,0.35);border-radius:5px;padding:2px 7px">🏛️ Chamber Required</span>'
+            : r.chamberReq==='No'
+              ? '<span style="font-size:10px;color:var(--muted);background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:5px;padding:2px 7px">No Chamber</span>'
+              : ''}
+        </div>
       </div>`;
   }).join('');
 }
@@ -3010,7 +3166,7 @@ function loadEncasingFlags() {
       <div style="font-size:20px">⚠️</div>
       <div>
         <div style="font-size:12px;font-weight:700;color:#FF453A;margin-bottom:2px">No items found</div>
-        <div style="font-size:11px;color:var(--muted)">No CC Encasing / RCC Encasing flagged on this route. Flag them in Pipe Laying first.</div>
+        <div style="font-size:11px;color:var(--muted)">No CC/RCC Encasing or Thrust Block fittings found on this route.</div>
       </div>
     </div>`;
     return;
@@ -3047,6 +3203,31 @@ function loadEncasingFlags() {
           <div style="font-size:11px;color:var(--muted);text-align:right;flex-shrink:0">${r.supervisor||''}</div>
         </div>`);
     });
+  });
+
+  // Also add Thrust Block Required fittings from fitting reports
+  const fittingReports = getReports().filter(r =>
+    r.project === project && r.type === 'fitting' && r.thrustBlock === 'Yes' &&
+    (r.route === route || !route)
+  );
+  fittingReports.forEach(r => {
+    cards.push(`<div class="str-enc-opt"
+        data-ref="${r.id}" data-idx="0"
+        data-type="Thrust Block" data-from="${r.chainage??''}" data-to="${r.chainage!=null?(r.chainage+0):''}"
+        data-date="${r.date||''}" data-vol-conc=""
+        onclick="selectEncasingForConcrete(this)"
+        style="border:1px solid rgba(255,159,10,0.4);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all 0.18s;display:flex;align-items:center;gap:12px">
+        <div style="width:38px;height:38px;border-radius:10px;background:rgba(255,159,10,0.12);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🧱</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px">Thrust Block Required</div>
+          <div style="font-size:11px;color:var(--muted)">
+            Fitting: <span style="color:#FF9F0A;font-weight:600">${r.fitType||'—'}</span>
+            · Ch: <span style="color:#FF9F0A;font-weight:600">${r.chainage!=null?r.chainage+'m':'—'}</span>
+            · ${r.date||''}
+          </div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:#FF9F0A;background:rgba(255,159,10,0.12);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:3px 7px;flex-shrink:0">Thrust Block</div>
+      </div>`);
   });
 
   picker.innerHTML = cards.length
@@ -3547,6 +3728,36 @@ function previewPhotosGPS(input, previewId, latId, lonId) {
 }
 
 // ========== SUBMIT REPORT ==========
+function selectValveChamber(el, val) {
+  el.closest('.field-group').querySelectorAll('.radio-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('val-chamber-req').value = val;
+}
+
+function selectThrustBlock(el, val) {
+  el.closest('.field-group').querySelectorAll('.radio-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('fit-thrust').value = val;
+}
+
+function selectFittingType(el, val) {
+  document.querySelectorAll('#fit-type-grid .radio-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('fit-type').value = val;
+  const other = document.getElementById('fit-type-other');
+  other.style.display = val === 'Other' ? 'block' : 'none';
+}
+
+function getGPSFor(prefix) {
+  if (!navigator.geolocation) { showToast('GPS not available'); return; }
+  showToast('Getting GPS...');
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    document.getElementById(prefix + '-lat').value = pos.coords.latitude.toFixed(6);
+    document.getElementById(prefix + '-lon').value = pos.coords.longitude.toFixed(6);
+    showToast('📍 GPS captured');
+  }, function() { showToast('GPS failed — enter manually'); });
+}
+
 function submitReport(type) {
   let data = { type, timestamp: new Date().toISOString(), supervisor: currentUser };
 
@@ -3787,6 +3998,7 @@ function submitReport(type) {
     data.depth    = firstV ? firstV.depth : null;
     data.lat      = parseFloat(document.getElementById('val-lat').value) || null;
     data.lon      = parseFloat(document.getElementById('val-lon').value) || null;
+    data.chamberReq = document.getElementById('val-chamber-req').value || '—';
     data.remarks  = document.getElementById('val-remarks').value;
 
   } else if (type === 'chamber') {
@@ -3809,8 +4021,9 @@ function submitReport(type) {
     data.length    = parseFloat(document.getElementById('cham-length').value) || null;
     data.width     = parseFloat(document.getElementById('cham-width').value) || null;
     data.height    = parseFloat(document.getElementById('cham-height').value) || null;
-    data.slab      = document.getElementById('cham-slab').value;
+    data.slab         = document.getElementById('cham-slab').value;
     data.slabInstalled = data.slab === 'Precast' ? document.getElementById('cham-slab-installed').value : null;
+    data.slabKept      = data.slab === 'Precast' ? document.getElementById('cham-slab-kept').value : null;
     data.lat       = parseFloat(document.getElementById('cham-lat').value) || null;
     data.lon       = parseFloat(document.getElementById('cham-lon').value) || null;
     data.remarks   = document.getElementById('cham-remarks').value;
@@ -3846,6 +4059,24 @@ function submitReport(type) {
     data.lat       = parseFloat(document.getElementById('str-lat').value) || null;
     data.lon       = parseFloat(document.getElementById('str-lon').value) || null;
     data.remarks   = document.getElementById('str-remarks').value;
+  } else if (type === 'fitting') {
+    var fitType = document.getElementById('fit-type').value;
+    if (fitType === 'Other') fitType = document.getElementById('fit-type-other').value.trim() || 'Other';
+    if (!fitType) { showToast('⚠️ Select fitting type'); return; }
+    data.project  = document.getElementById('fit-project').value;
+    data.route    = document.getElementById('fit-route').value;
+    data.date     = document.getElementById('fit-date').value;
+    data.fitType  = fitType;
+    data.chainage = parseFloat(document.getElementById('fit-chainage').value) || null;
+    data.qty      = parseInt(document.getElementById('fit-qty').value) || 1;
+    data.thrustBlock = document.getElementById('fit-thrust').value || '—';
+    data.lat      = parseFloat(document.getElementById('fit-lat').value) || null;
+    data.lon      = parseFloat(document.getElementById('fit-lon').value) || null;
+    data.remarks  = document.getElementById('fit-remarks').value.trim();
+    // collect photos
+    const fitPrevs = document.querySelectorAll('#fit-photo-prev img');
+    if (fitPrevs.length) data.photos = Array.from(fitPrevs).map(i => i.src);
+    if (!data.chainage) { showToast('⚠️ Enter chainage'); return; }
   }
 
   // Dependency check
@@ -3909,7 +4140,7 @@ function updateDashboard() {
     .filter(r => visibleProjects.indexOf(r.project) >= 0);
 
   const today = new Date().toISOString().slice(0, 10);
-  let excM=0, pipeM=0, refM=0, valC=0, strC=0, chamC=0;
+  let excM=0, pipeM=0, refM=0, valC=0, strC=0, chamC=0, fitC=0, dayFit=0;
   let dayExc=0, dayPipe=0, dayRefill=0, dayVal=0, dayStr=0, dayCham=0;
 
   visible.forEach(r => {
@@ -3919,6 +4150,7 @@ function updateDashboard() {
     if (r.type === 'refill')     { refM  += r.meters||0; if(isToday) dayRefill += r.meters||0; }
     if (r.type === 'valve')      { valC++;   if(isToday) dayVal++; }
     if (r.type === 'structure')  { strC++;   if(isToday) dayStr++; }
+    if (r.type === 'fitting')    { fitC++; if(isToday) dayFit++; }
     if (r.type === 'chamber')    { chamC++;  if(isToday) dayCham++; }
   });
 
@@ -4017,8 +4249,13 @@ function reportListItem(r) {
       case 'chamber':
         t = { label: r.chamType||'Chamber', cls:'chamber', icon:'🏛️',
               info: (r.chamType||'Chamber')+(r.chainage?' · Ch:'+r.chainage+'m':'')
-                   +(r.slab?' · '+r.slab+(r.slab==='Precast'&&r.slabInstalled?' ('+r.slabInstalled+')':''):'') };
+                   +(r.slab?' · '+r.slab+(r.slab==='Precast'&&r.slabKept?' ('+r.slabKept+')':''):'') };
         break;
+      case 'fitting': {
+        t = { label:'Fitting', cls:'fitting', icon:'🔗',
+              info: (r.fitType||'Fitting') + (r.qty > 1 ? ' × '+r.qty : '') + (r.chainage ? ' · Ch:'+r.chainage+'m' : '') };
+        break;
+      }
       case 'structure': {
         const concInfo = r.actualConc
           ? ' · 🧮 ' + r.actualConc + ' m³ actual' + (r.estConc && r.actualConc !== r.estConc ? ' (est ' + r.estConc + ')' : '')
@@ -4037,7 +4274,8 @@ function reportListItem(r) {
   const d = r.date || (r.timestamp||'').split('T')[0];
   const canEdit = (currentRole === 'supervisor' && r.supervisor === currentUser) || currentRole === 'admin';
   const editBtn = canEdit
-    ? `<button class="report-edit-btn" onclick="editReport(${r.id})" style="font-size:11px;padding:4px 8px;border-radius:6px;background:rgba(10,132,255,0.1);border:1px solid rgba(10,132,255,0.25);color:var(--blue);cursor:pointer;font-family:inherit">Edit</button>`
+    ? `<button class="report-edit-btn" onclick="editReport(${r.id})" style="font-size:11px;padding:4px 8px;border-radius:6px;background:rgba(10,132,255,0.1);border:1px solid rgba(10,132,255,0.25);color:var(--blue);cursor:pointer;font-family:inherit">Edit</button>
+       <button class="rpt-del-btn" data-rid="${r.id}" style="font-size:11px;padding:4px 8px;border-radius:6px;background:rgba(255,69,58,0.1);border:1px solid rgba(255,69,58,0.25);color:#FF453A;cursor:pointer;font-family:inherit">Delete</button>`
     : '';
   return `<div class="report-list-item">
     <div class="rl-icon-wrap rl-${t.cls}">${t.icon}</div>
@@ -4053,14 +4291,41 @@ function reportListItem(r) {
   </div>`;
 }
 
+function deleteReport(id) {
+  const reports = getReports();
+  const r = reports.find(function(x) { return String(x.id) === String(id); });
+  if (!r) { showToast('Report not found'); return; }
+  const canDelete = (currentRole === 'supervisor' && r.supervisor === currentUser) || currentRole === 'admin';
+  if (!canDelete) { showToast('You can only delete your own reports'); return; }
+  showConfirmModal(
+    'Delete Report',
+    'Delete this ' + (r.type || '') + ' report dated ' + (r.date || '') + '? Cannot be undone.',
+    function() {
+      var updated = getReports().filter(function(x) { return String(x.id) !== String(id); });
+      localStorage.setItem('aquatrack_reports', JSON.stringify(updated));
+      updateDashboard();
+      renderAllReports();
+      refreshMapPins();
+      if (typeof renderTracker === 'function') renderTracker();
+      showToast('Report deleted');
+    }
+  );
+}
+
 function renderAllReports() {
   const reports = getReports().slice().reverse();
   const container = document.getElementById('allReportsList');
   if (reports.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="es-icon">📋</div><p>No reports yet.</p></div>`;
+    container.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><p>No reports yet.</p></div>';
   } else {
-    container.innerHTML = reports.map(r => reportListItem(r)).join('');
+    container.innerHTML = reports.map(function(r) { return reportListItem(r); }).join('');
   }
+  // Event delegation for delete buttons — avoids inline onclick issues
+  container.onclick = function(e) {
+    const btn = e.target.closest('.rpt-del-btn');
+    if (!btn) return;
+    deleteReport(btn.dataset.rid);
+  };
 }
 
 // ========== CANVAS MAP ==========
@@ -4090,6 +4355,7 @@ const PIN_COLORS = {
   refill:     '#30D158',
   valve:      '#FF453A',
   structure:  '#BF5AF2',
+  fitting:    '#5AC8FA',
   chamber:    '#FF9500'
 };
 
@@ -4255,7 +4521,7 @@ function _drawAdminRoutes(proj) {
 const SEGMENT_COLORS = PIN_COLORS;
 const TYPE_LABELS = {
   excavation: 'Excavation', pipe: 'Pipe Laying', refill: 'Refilling',
-  valve: 'Valve', structure: 'Concrete', chamber: 'Chamber'
+  valve: 'Valve', structure: 'Concrete', chamber: 'Chamber', fitting: 'Fitting'
 };
 
 // ── Small chainage label icon ────────────────────────────────────────────────
@@ -4365,7 +4631,7 @@ function _drawPins(proj) {
     }
     // Final fallback: spread around centre
     if (!lat || !lon) {
-      if (r.from == null && r.chainage == null) return;
+      if (r.from == null && r.chainage == null && !r.lat && !r.lon) return;
       const idx = allRoutes.findIndex(rt => rt.id === r.route);
       lat = 22.818 + (idx >= 0 ? (idx - allRoutes.length / 2) * 0.004 / 3 : 0);
       lon = 70.813 + (idx >= 0 ? (idx % 3 - 1) * 0.004 : 0);
@@ -5112,12 +5378,44 @@ function exportPDF(mode) {
 // ========== TRACKER ==========
 let trackerActiveProject = null;
 
+function _getRouteCard(el) {
+  return el.closest('.tracker-route-card');
+}
+function _getZoomEls(card) {
+  return {
+    table:  card.querySelector('.gantt-table'),
+    wrap:   card.querySelector('.gantt-wrap'),
+    slider: card.querySelector('input[type=range]'),
+    label:  card.querySelector('.tracker-zoom-label')
+  };
+}
+function _applyZoom(card, z) {
+  const { table, wrap, slider, label } = _getZoomEls(card);
+  z = Math.min(5, Math.max(1, z));
+  table.style.transform = 'scaleX(' + z + ')';
+  table.style.width = (100 / z) + '%';
+  wrap.style.overflowX = z > 1 ? 'scroll' : 'auto';
+  if (slider) slider.value = z;
+  if (label)  label.textContent = z.toFixed(2).replace(/\.?0+$/,'') + '×';
+}
+function trackerZoom(btn, delta) {
+  const card = _getRouteCard(btn);
+  const slider = card.querySelector('input[type=range]');
+  const cur = slider ? parseFloat(slider.value) : 1;
+  _applyZoom(card, cur + delta);
+}
+function trackerZoomSet(slider) {
+  _applyZoom(_getRouteCard(slider), parseFloat(slider.value));
+}
+function trackerZoomReset(btn) {
+  _applyZoom(_getRouteCard(btn), 1);
+}
+
 function renderTracker() {
   const projects = getVisibleProjects();
   trackerActiveProject = trackerActiveProject || projects[0];
   if (!projects.includes(trackerActiveProject)) trackerActiveProject = projects[0];
 
-  // Project tabs
   const tabRow = document.getElementById('trackerProjTabs');
   tabRow.innerHTML = projects.map(p =>
     `<div class="proj-tab${p===trackerActiveProject?' active':''}" onclick="switchTrackerProject('${p.replace(/'/g,"&#39;")}')">${p}</div>`
@@ -5128,166 +5426,343 @@ function renderTracker() {
   const container = document.getElementById('trackerContent');
 
   if (!routes.length) {
-    container.innerHTML = `<div class="tracker-proj-empty">
-      <div style="font-size:32px;margin-bottom:12px">🛣️</div>
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">No routes defined</div>
-      <div style="font-size:12px;color:var(--muted)">Go to <strong>Settings → Routes</strong> to add pipeline routes for this project.</div>
-    </div>`;
+    container.innerHTML = `<div class="tracker-proj-empty"><div style="font-size:32px;margin-bottom:12px">🛣️</div><div style="font-size:14px;font-weight:600">No routes defined</div><div style="font-size:12px;color:var(--muted)">Go to Settings → Routes to add pipeline routes.</div></div>`;
     return;
   }
 
-  const TYPES = [
-    { key:'excavation', label:'Excavation',  color:'#FF9F0A' },
-    { key:'pipe',       label:'Pipe Laying',  color:'#0A84FF' },
-    { key:'refill',     label:'Refilling',    color:'#30D158' },
-    { key:'valve',      label:'Valves',       color:'#FF453A' },
-    { key:'chamber',    label:'Chambers',     color:'#FF9500' },
-    { key:'structure',  label:'Concrete',     color:'#BF5AF2' },
-  ];
+  const C = { excavation:'#FF9F0A', pipe:'#0A84FF', refill:'#30D158', valve:'#FF453A', chamber:'#FF9500', structure:'#BF5AF2', fitting:'#5AC8FA' };
+
+  function fmt(m)  { return m >= 1000 ? (m/1000).toFixed(2)+'km' : m+'m'; }
+  function pct(m, total) { return total ? Math.round(m/total*100) : 0; }
+  function covered(segs) { return segs.reduce((s,g) => s+(g.to-g.from), 0); }
 
   container.innerHTML = routes.map(route => {
-    const totalLen    = route.length || 1000;
-    const routeReps   = reports.filter(r => r.route === route.id);
+    const L  = route.length || 1000;
+    const rr = reports.filter(r => r.route === route.id || r.route === route.name);
 
-    // Build merged segments per type
-    const typeSegs = {};
-    TYPES.forEach(t => {
-      const raw = routeReps
-        .filter(r => r.type === t.key && r.from != null && r.to != null && r.to > r.from)
-        .map(r => ({ from: Math.max(0,r.from), to: Math.min(totalLen,r.to), done: true }))
-        .sort((a,b) => a.from - b.from);
-      typeSegs[t.key] = mergeSegments(raw);
+    function segsOf(type) {
+      return mergeSegments(
+        rr.filter(r => r.type===type && r.from!=null && r.to!=null && r.to>r.from)
+           .map(r => ({ from:Math.max(0,r.from), to:Math.min(L,r.to) }))
+           .sort((a,b) => a.from-b.from)
+      );
+    }
+
+    const excSegs  = segsOf('excavation');
+    const pipeSegs = segsOf('pipe');
+    const refSegs  = segsOf('refill');
+    const strSegsRaw = segsOf('structure');
+    const strSegs  = strSegsRaw.length ? strSegsRaw
+      : mergeSegments(rr.filter(r=>r.type==='structure'&&r.chainage!=null)
+          .map(r=>({from:Math.max(0,r.chainage-3),to:Math.min(L,r.chainage+3)})));
+
+    const valPts  = (rr.filter(r=>r.type==='valve').length  ? rr : reports).filter(r=>r.type==='valve');
+    const chamPts = (rr.filter(r=>r.type==='chamber').length? rr : reports).filter(r=>r.type==='chamber');
+    const fitPts  = (rr.filter(r=>r.type==='fitting').length? rr : reports).filter(r=>r.type==='fitting');
+
+    const excM  = covered(excSegs),  pipeM = covered(pipeSegs);
+    const refM  = covered(refSegs),  strM  = covered(strSegs);
+
+    // Encasing required
+    const encReq = [];
+    rr.filter(r=>r.type==='pipe').forEach(r => {
+      const entries = r.encasings&&r.encasings.length ? r.encasings
+        : (r.encasing&&r.encasing!=='Not Required'?[{type:r.encasing,from:r.encasingFrom,to:r.encasingTo}]:[]);
+      entries.forEach(e => {
+        if (!e.type||e.type==='Not Required') return;
+        const f=e.from!=null?parseFloat(e.from):(r.from||0);
+        const t=e.to!=null?parseFloat(e.to):(r.to||0);
+        if (t>f) encReq.push({from:f,to:t,label:e.type.includes('CC')?'CC':'RCC'});
+      });
     });
+    const encM = covered(mergeSegments(encReq.slice().sort((a,b)=>a.from-b.from)));
 
-    // For single-point types (valve, chamber, concrete) use chainage points
-    ['valve','chamber','structure'].forEach(k => {
-      if (!typeSegs[k].length) {
-        const pts = routeReps
-          .filter(r => r.type === k && r.chainage != null)
-          .map(r => ({ from: Math.max(0, r.chainage - 5), to: Math.min(totalLen, r.chainage + 5), done: true }));
-        if (pts.length) typeSegs[k] = pts;
-      }
+    // ── Pipe gaps ──────────────────────────────────────────────────────────
+    const pipeGaps = findGapsInCovered(pipeSegs, L);
+
+    // ── Precast status ─────────────────────────────────────────────────────
+    const precastChams    = chamPts.filter(r => r.slab === 'Precast');
+    const precastKept     = precastChams.filter(r => r.slabKept === 'Kept');
+    const precastNotKept  = precastChams.filter(r => r.slabKept === 'Not Kept');
+    const precastUnknown  = precastChams.filter(r => !r.slabKept);
+
+    // ── Encasing status ────────────────────────────────────────────────────
+    const encDone    = encReq.filter(e => strSegs.some(s => s.from<=e.from+5 && s.to>=e.to-5));
+    const encPartial = encReq.filter(e => !strSegs.some(s=>s.from<=e.from+5&&s.to>=e.to-5) && strSegs.some(s=>s.from<e.to&&s.to>e.from));
+    const encPending = encReq.filter(e => !strSegs.some(s=>s.from<=e.from+5&&s.to>=e.to-5) && !strSegs.some(s=>s.from<e.to&&s.to>e.from));
+
+    // ── Thrust block status ────────────────────────────────────────────────
+    const thrustAll     = fitPts.filter(r => r.thrustBlock === 'Yes');
+    const thrustDone    = thrustAll.filter(r => r.chainage!=null && strSegs.some(s=>s.from<=r.chainage+10&&s.to>=r.chainage-10));
+    const thrustPending = thrustAll.filter(r => !strSegs.some(s=>r.chainage!=null&&s.from<=r.chainage+10&&s.to>=r.chainage-10));
+
+    const hasData = excM||pipeM||refM||strM||valPts.length||chamPts.length||fitPts.length;
+    if (!hasData) {
+      return `<div class="tracker-route-card">
+        <div style="font-size:15px;font-weight:800;margin-bottom:4px">🛣️ ${route.name}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${route.pipe||''} · ${fmt(L)}</div>
+        <div style="text-align:center;padding:24px 0;color:var(--muted);font-size:12px">📋 No reports submitted yet</div>
+      </div>`;
+    }
+
+    // ── Progress bar builder ───────────────────────────────────────────────
+    function progressBar(segs, color, total) {
+      const pctVal = pct(covered(segs), total);
+      const blocks = segs.map(sg => {
+        const l = (sg.from/total*100).toFixed(2), w = ((sg.to-sg.from)/total*100).toFixed(2);
+        return `<div style="position:absolute;top:0;bottom:0;left:${l}%;width:${w}%;background:${color};border-radius:2px"></div>`;
+      }).join('');
+      return `<div style="position:relative;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;flex:1">${blocks}</div>`;
+    }
+
+    function progressRow(icon, label, color, segs, total, extra) {
+      const m = covered(segs), p = pct(m, total);
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+        <span style="font-size:13px;width:20px;text-align:center;flex-shrink:0">${icon}</span>
+        <span style="font-size:11px;color:var(--muted);width:72px;flex-shrink:0">${label}</span>
+        ${progressBar(segs, color, total)}
+        <span style="font-size:11px;font-weight:700;color:${color};width:38px;text-align:right;flex-shrink:0">${p}%</span>
+        <span style="font-size:10px;color:var(--muted);width:44px;text-align:right;flex-shrink:0">${fmt(m)}</span>
+      </div>`;
+    }
+
+    // ── Alert/status badge ─────────────────────────────────────────────────
+    function statusBadge(state) {
+      // state: 'done' | 'pending' | 'partial' | 'warning' | 'unknown'
+      const map = {
+        done:    ['#30D158','✅ Done'],
+        pending: ['#FF453A','⏳ Pending'],
+        partial: ['#FF9F0A','⚡ Partial'],
+        warning: ['#FF453A','❌ No'],
+        unknown: ['#8E8E93','— Unknown'],
+        yes:     ['#30D158','✅ Yes'],
+        no:      ['#FF453A','❌ No'],
+        kept:    ['#30D158','✅ Kept'],
+        notkept: ['#FF453A','❌ Not Kept'],
+      };
+      const [col, txt] = map[state] || ['#8E8E93', state];
+      return `<span style="font-size:10px;font-weight:700;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:5px;padding:2px 7px;white-space:nowrap">${txt}</span>`;
+    }
+
+    // ── Table builder ──────────────────────────────────────────────────────
+    function sectionTable(headerColor, title, headers, rows) {
+      if (!rows.length) return '';
+      const ths = headers.map(h =>
+        `<th style="padding:6px 10px;text-align:${h.center?'center':'left'};color:var(--muted);font-weight:600;font-size:10px;border-bottom:1px solid var(--border);white-space:nowrap">${h.label}</th>`
+      ).join('');
+      const trs = rows.map((cells,ri) =>
+        `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);${ri%2===1?'background:rgba(255,255,255,0.02)':''}">
+          ${cells.map((c,ci) => `<td style="padding:6px 10px;font-size:11px;text-align:${headers[ci]&&headers[ci].center?'center':'left'};${headers[ci]&&headers[ci].bold?'font-weight:700;color:var(--text)':'color:var(--muted)'}">${c}</td>`).join('')}
+        </tr>`
+      ).join('');
+      return `<div style="border-radius:10px;overflow:hidden;border:1px solid ${headerColor}33;margin-bottom:10px">
+        <div style="background:${headerColor}15;padding:7px 12px;font-size:11px;font-weight:700;color:${headerColor};border-bottom:1px solid ${headerColor}25">${title}</div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:320px">
+          <thead><tr style="background:rgba(255,255,255,0.03)">${ths}</tr></thead>
+          <tbody>${trs}</tbody>
+        </table></div>
+      </div>`;
+    }
+
+    // ── Action items ───────────────────────────────────────────────────────
+    function actionItem(color, icon, title, sub) {
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-left:3px solid ${color};background:${color}10;border-radius:0 8px 8px 0;margin-bottom:6px">
+        <span style="font-size:15px;flex-shrink:0;margin-top:1px">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;font-weight:700;color:${color}">${title}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">${sub}</div>
+        </div>
+      </div>`;
+    }
+    function doneItem(icon, title) {
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-left:3px solid #30D158;background:rgba(48,209,88,0.06);border-radius:0 8px 8px 0;margin-bottom:6px">
+        <span style="font-size:13px">${icon}</span>
+        <span style="font-size:11px;color:#30D158;font-weight:600">${title}</span>
+      </div>`;
+    }
+
+    // Build actions
+    let actions = '';
+    let totalPending = 0;
+
+    // 1. Pipe gaps
+    if (pipeGaps.length) {
+      pipeGaps.forEach(g => {
+        totalPending++;
+        actions += actionItem('#FF453A','🔩','Pipe Laying Gap — '+fmt(g.to-g.from)+' missing',
+          'Ch: '+g.from+'m → '+g.to+'m · '+fmt(g.to-g.from)+' not yet laid');
+      });
+    } else if (pipeSegs.length) {
+      actions += doneItem('🔩', 'No gaps in pipe laying');
+    }
+
+    // 2. Precast kept
+    precastNotKept.forEach(r => {
+      totalPending++;
+      actions += actionItem('#FF453A','🏛️','Precast Slab Not Kept',
+        (r.chamType||'Chamber')+' · Ch: '+(r.chainage!=null?r.chainage+'m':'?')+' · '+r.date);
     });
+    precastUnknown.forEach(r => {
+      totalPending++;
+      actions += actionItem('#FF9F0A','🏛️','Precast — Kept status not recorded',
+        (r.chamType||'Chamber')+' · Ch: '+(r.chainage!=null?r.chainage+'m':'?')+' · '+r.date);
+    });
+    if (!precastNotKept.length && !precastUnknown.length && precastChams.length) {
+      actions += doneItem('🏛️', 'All precast slabs kept ✓');
+    }
 
-    // Tick marks — up to 10, always include 0 and totalLen
-    const tickCount  = Math.min(10, Math.floor(totalLen / 100));
-    const tickStep   = Math.ceil(totalLen / tickCount / 50) * 50;
-    const ticks      = [];
-    for (let t = 0; t <= totalLen; t += tickStep) ticks.push(t);
-    if (ticks[ticks.length-1] !== totalLen) ticks.push(totalLen);
+    // 3. Encasing
+    encPending.forEach(e => {
+      totalPending++;
+      actions += actionItem('#BF5AF2','🏗️',
+        (e.label==='CC'?'CC':'RCC')+' Encasing Pending — '+fmt(e.to-e.from),
+        'Ch: '+e.from+'m → '+e.to+'m · No concrete work submitted yet');
+    });
+    encPartial.forEach(e => {
+      totalPending++;
+      actions += actionItem('#FF9F0A','🏗️',
+        (e.label==='CC'?'CC':'RCC')+' Encasing Partially Done',
+        'Ch: '+e.from+'m → '+e.to+'m · Range not fully covered');
+    });
+    if (!encPending.length && !encPartial.length && encReq.length) {
+      actions += doneItem('🏗️', 'All encasing concrete submitted ✓');
+    }
 
-    // ── Build Gantt table ──────────────────────────────────────────────────
-    // Header row: chainage axis
-    const headerCells = ticks.map((t, i) => {
-      const left = (t / totalLen * 100).toFixed(2);
-      return `<td class="gantt-cell chainage-header gantt-tick" style="width:${i < ticks.length-1 ? ((ticks[i+1]-t)/totalLen*100).toFixed(2)+'%' : '1px'}">${t}m</td>`;
-    }).join('');
+    // 4. Thrust blocks
+    thrustPending.forEach(r => {
+      totalPending++;
+      actions += actionItem('#FF9F0A','🧱','Thrust Block Pending',
+        (r.fitType||'Fitting')+' · Ch: '+(r.chainage!=null?r.chainage+'m':'?')+' · No concrete submitted');
+    });
+    if (!thrustPending.length && thrustAll.length) {
+      actions += doneItem('🧱', 'All thrust block concretes submitted ✓');
+    }
 
-    // Data rows
-    const dataRows = TYPES.map(type => {
-      const segs     = typeSegs[type.key] || [];
-      const covered  = segs.reduce((s,sg) => s + (sg.to - sg.from), 0);
-      const pct      = totalLen ? Math.round(covered / totalLen * 100) : 0;
+    // ── ENCASING TABLE ─────────────────────────────────────────────────────
+    const encTable = sectionTable(C.structure,
+      '🏗️ Encasing — '+encReq.length+' location'+(encReq.length!==1?'s':''),
+      [{label:'#'},{label:'Type'},{label:'From',center:true},{label:'To',center:true},{label:'Length',center:true},{label:'Status',center:true}],
+      encReq.map((e,i) => {
+        const done = strSegs.some(s=>s.from<=e.from+5&&s.to>=e.to-5);
+        const part = !done && strSegs.some(s=>s.from<e.to&&s.to>e.from);
+        return [i+1, (e.label==='CC'?'🧱 CC Encasing':'🏗️ RCC Encasing'),
+          e.from+'m', e.to+'m',
+          `<span style="color:${C.structure};font-weight:700">${fmt(e.to-e.from)}</span>`,
+          statusBadge(done?'done':part?'partial':'pending')];
+      })
+    );
 
-      // Find pending gaps (between done segments, and before first / after last)
-      const pendingSegs = findPendingRanges(segs, totalLen);
+    // ── VALVES TABLE ───────────────────────────────────────────────────────
+    const valTable = sectionTable(C.valve,
+      '🔧 Valves — '+valPts.length+' installed',
+      [{label:'#'},{label:'Type',bold:true},{label:'Chainage',center:true},{label:'Chamber Req.',center:true},{label:'Date'},{label:'By'}],
+      valPts.map((r,i) => [
+        i+1,
+        r.valves&&r.valves.length ? r.valves.map(v=>(v.qty>1?v.qty+'× ':'')+v.valType).join(', ') : (r.valType||'—'),
+        r.chainage!=null ? `<span style="color:${C.valve};font-weight:700">${r.chainage}m</span>` : '—',
+        statusBadge(r.chamberReq==='Yes'?'yes':r.chamberReq==='No'?'no':'unknown'),
+        r.date||'—', r.supervisor||'—'
+      ])
+    );
 
-      // Build blocks inside the cell row using a single wide cell with position:relative
-      const doneBlocks = segs.map(sg => {
-        const l = (sg.from / totalLen * 100).toFixed(3);
-        const w = ((sg.to - sg.from) / totalLen * 100).toFixed(3);
-        return `<div class="gantt-block-done" style="left:${l}%;width:${w}%;background:${type.color}88;border:1.5px solid ${type.color}">
-          <span style="position:absolute;left:50%;transform:translateX(-50%);top:50%;transform:translate(-50%,-50%);font-size:8px;color:#fff;white-space:nowrap;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.6)">${sg.to-sg.from}m</span>
-        </div>`;
-      }).join('');
+    // ── CHAMBERS TABLE ─────────────────────────────────────────────────────
+    const chamTable = sectionTable(C.chamber,
+      '🏛️ Chambers — '+chamPts.length+' built',
+      [{label:'#'},{label:'Type',bold:true},{label:'Chainage',center:true},{label:'Slab'},{label:'Precast Kept',center:true},{label:'Date'}],
+      chamPts.map((r,i) => [
+        i+1,
+        r.chamType||'—',
+        r.chainage!=null ? `<span style="color:${C.chamber};font-weight:700">${r.chainage}m</span>` : '—',
+        r.slab||'—',
+        r.slab==='Precast' ? statusBadge(r.slabKept==='Kept'?'kept':r.slabKept==='Not Kept'?'notkept':'unknown') : '<span style="color:var(--muted);font-size:10px">N/A</span>',
+        r.date||'—'
+      ])
+    );
 
-      const pendingBlocks = pendingSegs.map(sg => {
-        const l = (sg.from / totalLen * 100).toFixed(3);
-        const w = ((sg.to - sg.from) / totalLen * 100).toFixed(3);
-        if (w < 0.5) return '';
-        return `<div class="gantt-block-pending" style="left:${l}%;width:${w}%;border-color:${type.color}66"></div>`;
-      }).join('');
+    // ── FITTINGS TABLE ─────────────────────────────────────────────────────
+    const fitTable = sectionTable(C.fitting,
+      '🔗 Fittings — '+fitPts.length+' installed',
+      [{label:'#'},{label:'Type',bold:true},{label:'Chainage',center:true},{label:'Qty',center:true},{label:'Thrust Block',center:true},{label:'TB Concrete',center:true},{label:'Date'}],
+      fitPts.map((r,i) => {
+        const tbConcrete = r.thrustBlock!=='Yes' ? '<span style="color:var(--muted);font-size:10px">N/A</span>'
+          : strSegs.some(s=>r.chainage!=null&&s.from<=r.chainage+10&&s.to>=r.chainage-10)
+            ? statusBadge('done') : statusBadge('pending');
+        return [
+          i+1, r.fitType||'—',
+          r.chainage!=null ? `<span style="color:${C.fitting};font-weight:700">${r.chainage}m</span>` : '—',
+          r.qty||1,
+          statusBadge(r.thrustBlock==='Yes'?'yes':r.thrustBlock==='No'?'no':'unknown'),
+          tbConcrete, r.date||'—'
+        ];
+      })
+    );
 
-      // Tick dividers
-      const tickDivs = ticks.map(t => {
-        const l = (t / totalLen * 100).toFixed(2);
-        return `<div style="position:absolute;top:0;bottom:0;left:${l}%;width:1px;background:rgba(255,255,255,0.08)"></div>`;
-      }).join('');
-
-      const label = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${type.color};margin-right:5px;vertical-align:middle"></span>${type.label}`;
-      const coveredStr = covered >= 1000 ? (covered/1000).toFixed(2)+'km' : covered+'m';
-
-      return `<tr>
-        <td class="gantt-row-label">${label}<br><span style="font-size:9px;color:${type.color};margin-left:13px">${coveredStr} (${pct}%)</span></td>
-        <td colspan="${ticks.length}" style="padding:0;position:relative;height:28px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04)">
-          ${tickDivs}${pendingBlocks}${doneBlocks}
-        </td>
-      </tr>`;
-    }).join('');
-
-    // Summary stats
-    const pipeTotal  = typeSegs['pipe'].reduce((s,sg)=>s+(sg.to-sg.from),0);
-    const excTotal   = typeSegs['excavation'].reduce((s,sg)=>s+(sg.to-sg.from),0);
-    const refTotal   = typeSegs['refill'].reduce((s,sg)=>s+(sg.to-sg.from),0);
-    const pipePct    = totalLen ? Math.round(pipeTotal/totalLen*100) : 0;
-    const valveCount = routeReps.filter(r=>r.type==='valve').length;
-    const chamCount  = routeReps.filter(r=>r.type==='chamber').length;
-    const concrCount = routeReps.filter(r=>r.type==='structure').length;
-
-    // No reports at all for this route yet
-    const hasAnyData = Object.values(typeSegs).some(s => s.length > 0) || routeReps.length > 0;
-    const emptyState = !hasAnyData ? `
-      <div style="text-align:center;padding:20px 0;color:var(--muted)">
-        <div style="font-size:24px;margin-bottom:8px">📋</div>
-        <div style="font-size:12px">No reports submitted for this route yet.</div>
-        <div style="font-size:11px;margin-top:4px">Supervisors can submit reports from the <strong style="color:var(--text)">Submit</strong> tab.</div>
-      </div>` : '';
-
-    // Gap detection
-    const pipeGaps = findGapsInCovered(typeSegs['pipe'], totalLen);
-    const gapHTML  = pipeGaps.length
-      ? '<div class="tracker-gap-list">' +
-        pipeGaps.map(g =>
-          `<div class="tracker-gap-item"><span class="tracker-gap-icon">⚠️</span>
-           Pipe gap: <strong>${g.from}m – ${g.to}m</strong> &nbsp;(${g.to-g.from}m missing)</div>`
-        ).join('') + '</div>'
-      : typeSegs['pipe'].length
-        ? '<div class="tracker-ok" style="margin-top:8px">✅ No gaps in pipe laying</div>'
-        : '';
-
+    // ── Final render ───────────────────────────────────────────────────────
     return `<div class="tracker-route-card">
-      <div class="tracker-route-name">🛣️ ${route.name}</div>
-      <div class="tracker-route-meta">
-        ${route.pipe ? route.pipe+' · ' : ''}Total ${totalLen>=1000?(totalLen/1000).toFixed(2)+'km':totalLen+'m'}
-        ${hasAnyData ? `&nbsp;·&nbsp; Pipe ${pipePct}%
-        &nbsp;·&nbsp; Exc ${excTotal}m · Pipe ${pipeTotal}m · Refill ${refTotal}m
-        &nbsp;·&nbsp; Valves: ${valveCount} · Chambers: ${chamCount} · Concrete: ${concrCount}` : ''}
+
+      <!-- ① Route header with overall pipe % -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:15px;font-weight:800">🛣️ ${route.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${route.pipe?route.pipe+' · ':''}Total ${fmt(L)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <div style="background:${C.pipe}15;border:1px solid ${C.pipe}33;border-radius:10px;padding:6px 14px;text-align:center">
+            <div style="font-size:20px;font-weight:800;color:${C.pipe};line-height:1">${pct(pipeM,L)}%</div>
+            <div style="font-size:9px;color:var(--muted);margin-top:2px">Pipe Done</div>
+          </div>
+          ${totalPending>0
+            ? `<div style="background:rgba(255,69,58,0.12);border:1px solid rgba(255,69,58,0.35);border-radius:10px;padding:6px 14px;text-align:center">
+                <div style="font-size:20px;font-weight:800;color:#FF453A;line-height:1">${totalPending}</div>
+                <div style="font-size:9px;color:var(--muted);margin-top:2px">Pending</div>
+               </div>`
+            : `<div style="background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);border-radius:10px;padding:6px 14px;text-align:center">
+                <div style="font-size:14px;font-weight:800;color:#30D158;line-height:1.4">✅</div>
+                <div style="font-size:9px;color:var(--muted);margin-top:2px">All Clear</div>
+               </div>`}
+        </div>
       </div>
 
-      ${emptyState || `
-      <div class="gantt-wrap">
-        <table class="gantt-table">
-          <thead>
-            <tr>
-              <td class="gantt-row-label" style="font-size:9px;color:var(--muted);border-right:2px solid var(--border);padding-right:8px;text-align:right">Chainage →</td>
-              ${headerCells}
-            </tr>
-          </thead>
-          <tbody>${dataRows}</tbody>
-        </table>
+      <!-- ② Progress bars -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Progress</div>
+        ${progressRow('⛏️','Excavation',C.excavation,excSegs,L)}
+        ${progressRow('🔩','Pipe Laying',C.pipe,pipeSegs,L)}
+        ${progressRow('🪣','Refilling',C.refill,refSegs,L)}
+        ${strSegs.length||encReq.length ? progressRow('🏗️','Concrete',C.structure,strSegs,L) : ''}
+        <!-- Quantity summary row -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;margin-top:4px;border-top:1px solid var(--border)">
+          ${[
+            [C.valve,   'Valves',    valPts.length],
+            [C.chamber, 'Chambers',  chamPts.length],
+            [C.fitting, 'Fittings',  fitPts.length],
+            [C.structure,'Encasing', encReq.length ? encM+'m req' : '—'],
+          ].map(([col,lbl,val]) => `<div style="background:${col}12;border:1px solid ${col}30;border-radius:7px;padding:4px 10px;text-align:center;min-width:60px">
+            <div style="font-size:12px;font-weight:800;color:${col}">${val}</div>
+            <div style="font-size:9px;color:var(--muted)">${lbl}</div>
+          </div>`).join('')}
+        </div>
       </div>
 
-      <div class="gantt-legend">
-        <div><span class="gantt-legend-done" style="background:#0A84FF88"></span> Completed</div>
-        <div><span class="gantt-legend-pending"></span> Pending</div>
-      </div>
+      <!-- ③ Action items -->
+      ${actions ? `<div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+          ${totalPending>0 ? '⚠️ Action Required ('+totalPending+')' : '✅ All Clear'}
+        </div>
+        ${actions}
+      </div>` : ''}
 
-      ${gapHTML}`}
+      <!-- ④ Detail tables -->
+      ${encTable}
+      ${valTable}
+      ${chamTable}
+      ${fitTable}
+
     </div>`;
   }).join('');
 }
 
-// Find pending (not-yet-done) ranges given merged done segments
+
 function findPendingRanges(doneSegs, totalLen) {
   if (!doneSegs.length) return [{ from:0, to:totalLen }];
   const pending = [];
@@ -5376,20 +5851,29 @@ function getVisibleProjects() {
   const all = getProjects();
   if (currentRole === 'admin') return all;
 
-  // 1. projects[] in user record — set by Account Code (most authoritative on supervisor device)
+  // 1. projects[] in user record — set by Account Code
+  //    Return directly without filtering against getProjects()
+  //    because supervisor device may not have all projects in localStorage
   const userRecord = getUsers()[currentUser];
   if (userRecord && Array.isArray(userRecord.projects) && userRecord.projects.length > 0) {
-    return all.filter(function(p) { return userRecord.projects.indexOf(p) >= 0; });
+    // Also ensure these projects exist in localStorage so dropdowns work
+    const saved = getProjects();
+    const missing = userRecord.projects.filter(function(p) { return saved.indexOf(p) < 0; });
+    if (missing.length > 0) {
+      const merged = saved.concat(missing);
+      localStorage.setItem('aquatrack_projects', JSON.stringify(merged));
+    }
+    return userRecord.projects;
   }
 
-  // 2. assignments in localStorage (works if admin and supervisor share device / same browser)
+  // 2. assignments in localStorage
   const assignments = getProjectAssignments();
   const byAssignment = all.filter(function(p) {
     return (assignments[p] || []).indexOf(currentUser) >= 0;
   });
   if (byAssignment.length > 0) return byAssignment;
 
-  // 3. No assignment info at all — show all (first-time / unassigned supervisor)
+  // 3. No assignment info — show all
   const anyAssigned = Object.keys(assignments).some(function(p) {
     return assignments[p] && assignments[p].length > 0;
   });
@@ -5867,7 +6351,7 @@ function cancelDeleteProject() {
 function populateAllProjectDropdowns() {
   const projects = getVisibleProjects();
   const opts = projects.map(p => `<option value="${p}">${p}</option>`).join('');
-  ['exc-project','pipe-project','ref-project','val-project','str-project','cham-project'].forEach(id => {
+  ['exc-project','pipe-project','ref-project','val-project','str-project','cham-project','fit-project'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const cur = el.value;
