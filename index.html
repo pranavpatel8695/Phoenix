@@ -1274,19 +1274,12 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
       </button>
       <input type="file" id="loginImportFile" accept=".json" style="display:none" onchange="importBackupFromLogin(this)">
 
-      <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:12px">
-        <p style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:8px">🔑 Got an account code from admin?</p>
-        <div id="syncCodeBox" style="display:none;margin-bottom:8px">
-          <input id="syncCodeInput" type="text" placeholder="Paste account code here..." autocapitalize="none" autocorrect="off" spellcheck="false"
-            style="width:100%;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;font-family:monospace;box-sizing:border-box;margin-bottom:6px">
-          <button onclick="applySyncCode(document.getElementById('syncCodeInput').value)"
-            style="width:100%;padding:10px;border-radius:10px;background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.35);color:var(--green);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">
-            ✅ Apply Account Code & Login
-          </button>
-        </div>
-        <button onclick="var b=document.getElementById('syncCodeBox');b.style.display=b.style.display==='none'?'block':'none'"
-          style="width:100%;padding:10px;border-radius:10px;background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.3);color:var(--green);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">
-          🔑 Enter Account Code
+      <div id="syncCodeBox" style="display:none">
+        <input id="syncCodeInput" type="text" placeholder="Paste account code here..." autocapitalize="none" autocorrect="off" spellcheck="false"
+          style="width:100%;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;font-family:monospace;box-sizing:border-box;margin-bottom:6px">
+        <button onclick="applySyncCode(document.getElementById('syncCodeInput').value)"
+          style="width:100%;padding:10px;border-radius:10px;background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.35);color:var(--green);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">
+          ✅ Apply Legacy Code
         </button>
       </div>
     </div>
@@ -2843,19 +2836,48 @@ function doLogin() {
   const pass = document.getElementById('loginPass').value;
   const users = getUsers();
   if (users[user] && users[user].pass === pass) {
-    currentUser = user;
-    currentRole = users[user].role;
-    if (currentRole === 'admin') {
-      syncUserProjects();
-    } else {
-      syncSupervisorProjects(user);
-    }
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    initApp();
+    _doLoginSuccess(user);
   } else {
-    alert('Incorrect username or password.\n\nIf you are new: tap Enter Account Code below and paste the code from admin.');
+    // Not found locally — try Firebase
+    fbInit().then(function(ready) {
+      if (!ready || !_db) {
+        alert('Incorrect username or password.');
+        return;
+      }
+      _db.collection('_config').doc('adminData').get().then(function(doc) {
+        if (!doc.exists) { alert('Incorrect username or password.'); return; }
+        const d = doc.data();
+        const fbUsers = d.users || {};
+        if (fbUsers[user] && fbUsers[user].pass === pass) {
+          // Save all Firebase data locally
+          const existing = getUsers();
+          Object.assign(existing, fbUsers);
+          saveUsers(existing);
+          if (d.projects) localStorage.setItem('aquatrack_projects', JSON.stringify(d.projects));
+          if (d.routes)   localStorage.setItem('aquatrack_routes',   JSON.stringify(d.routes));
+          if (d.assignments) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
+          _doLoginSuccess(user);
+        } else {
+          alert('Incorrect username or password.');
+        }
+      }).catch(function() { alert('Incorrect username or password.'); });
+    });
   }
+}
+
+function _doLoginSuccess(user) {
+  const users = getUsers();
+  currentUser = user;
+  currentRole = users[user].role;
+  if (currentRole === 'admin') {
+    syncUserProjects();
+    setTimeout(function() { fbInit().then(function(ok){ if(ok) fbPushAdminData(); }); }, 2000);
+  } else {
+    syncSupervisorProjects(user);
+  }
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  initApp();
 }
 
 function doLogout() {
@@ -5995,6 +6017,7 @@ function getProjects() {
 }
 function saveProjects(arr) {
   localStorage.setItem('aquatrack_projects', JSON.stringify(arr));
+  fbPushAdminData();
 }
 
 // Project → supervisor assignments  { 'AJI 3 Project': ['supervisor1','supervisor2'], ... }
@@ -6004,29 +6027,56 @@ function getProjectAssignments() {
 }
 function saveProjectAssignments(obj) {
   localStorage.setItem('aquatrack_assignments', JSON.stringify(obj));
+  fbPushAdminData();
 }
 
 // Returns projects the current user is allowed to see
 // Sync THIS supervisor's projects[] from assignments stored on this device
-function syncSupervisorProjects(username) {
-  // Sync routes from Firebase if available
-  if (_db) {
-    _db.collection('_config').doc('routes').get().then(doc => {
+async function syncSupervisorProjects(username) {
+  // Pull all config from Firebase — projects, routes, assignments
+  const ready = await fbInit();
+  if (ready && _db) {
+    try {
+      // Pull config doc (projects, routes, assignments saved by admin)
+      const doc = await _db.collection('_config').doc('adminData').get();
       if (doc.exists) {
-        const routes = doc.data().routes;
-        if (routes) localStorage.setItem('aquatrack_routes', JSON.stringify(routes));
+        const d = doc.data();
+        // Sync projects
+        if (d.projects && d.projects.length) {
+          const existing = JSON.parse(localStorage.getItem('aquatrack_projects')||'[]');
+          const merged = existing.slice();
+          d.projects.forEach(function(p){ if (!merged.includes(p)) merged.push(p); });
+          localStorage.setItem('aquatrack_projects', JSON.stringify(merged));
+        }
+        // Sync routes — admin is source of truth
+        if (d.routes) {
+          localStorage.setItem('aquatrack_routes', JSON.stringify(d.routes));
+        }
+        // Sync user's assigned projects
+        if (d.assignments) {
+          localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
+          const users = getUsers();
+          if (users[username]) {
+            const allP = JSON.parse(localStorage.getItem('aquatrack_projects')||'[]');
+            users[username].projects = allP.filter(function(p) {
+              return (d.assignments[p]||[]).includes(username);
+            });
+            if (!users[username].projects.length) users[username].projects = allP.slice();
+            saveUsers(users);
+          }
+        }
         populateAllProjectDropdowns();
+        showToast('✅ Data synced from admin');
       }
-    }).catch(()=>{});
+    } catch(e) { console.warn('Supervisor sync failed:', e); }
   }
-  // Only update projects[] from assignments if this device actually has assignment data.
-  // If no assignments exist (supervisor's own device), keep projects[] from Account Code untouched.
+
+  // Fallback: local assignments
   const assignments = getProjectAssignments();
   const anyAssigned = Object.keys(assignments).some(function(p) {
     return assignments[p] && assignments[p].length > 0;
   });
-  if (!anyAssigned) return; // nothing to sync — Account Code projects[] stays intact
-
+  if (!anyAssigned) return;
   const users = getUsers();
   if (!users[username]) return;
   const allProjects = getProjects();
@@ -6087,6 +6137,20 @@ const ROUTE_COLORS = ['#0A84FF','#30D158','#FFD60A','#FF453A','#FF6B6B','#BF5AF2
 function getAdminRoutes() {
   return JSON.parse(localStorage.getItem('aquatrack_routes') || 'null') || buildDefaultRoutes();
 }
+function fbPushAdminData() {
+  if (!_db || currentRole !== 'admin') return;
+  try {
+    const data = {
+      projects:    getProjects(),
+      routes:      getAdminRoutes(),
+      assignments: getProjectAssignments(),
+      users:       getUsers(),
+      updatedAt:   Date.now()
+    };
+    _db.collection('_config').doc('adminData').set(data).catch(()=>{});
+  } catch(e) {}
+}
+
 function saveAdminRoutes(routes) {
   localStorage.setItem('aquatrack_routes', JSON.stringify(routes));
   // Push to Firebase so supervisors get updated routes on next login
@@ -6405,11 +6469,12 @@ function confirmAddSupervisor() {
   if (users[user]) { showToast('Username "' + user + '" already exists'); return; }
   users[user] = { role: 'supervisor', pass: pass, name: name };
   saveUsers(users);
-  syncUserProjects(); // set their initial projects list
+  syncUserProjects();
+  fbPushAdminData(); // push to Firebase so supervisor can login without Account Code
   closeAddSupervisorModal();
   renderSupervisorAccounts();
   renderSupervisorAssign();
-  showToast('✅ ' + name + ' added as supervisor');
+  showToast('✅ ' + name + ' added — can now login on any device');
 }
 
 function renderSupervisorAssign() {
