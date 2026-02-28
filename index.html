@@ -2865,7 +2865,7 @@ function doLogin() {
   }
 }
 
-function _doLoginSuccess(user) {
+async function _doLoginSuccess(user) {
   const users = getUsers();
   currentUser = user;
   currentRole = users[user].role;
@@ -2873,10 +2873,13 @@ function _doLoginSuccess(user) {
     syncUserProjects();
     setTimeout(function() { fbInit().then(function(ok){ if(ok) fbPushAdminData(); }); }, 2000);
   } else {
-    syncSupervisorProjects(user);
+    // Show loading while fetching routes/projects from Firebase
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    showToast('⏳ Loading your data…');
+    await syncSupervisorProjects(user);
+    populateAllProjectDropdowns();
   }
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
   initApp();
 }
 
@@ -6066,7 +6069,8 @@ async function syncSupervisorProjects(username) {
           }
         }
         populateAllProjectDropdowns();
-        showToast('✅ Data synced from admin');
+        showToast('✅ Routes & projects loaded');
+        if (typeof initApp === 'function') initApp();
       }
     } catch(e) { console.warn('Supervisor sync failed:', e); }
   }
