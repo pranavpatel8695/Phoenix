@@ -1539,6 +1539,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           <div class="field-group">
             <label>Meters Excavated</label>
             <input type="number" id="exc-meters" placeholder="Auto-calculated" readonly style="opacity:0.7">
+          <span id="exc-meters-badge" style="display:none;font-size:11px;font-weight:700;color:#30D158;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);border-radius:6px;padding:3px 8px;margin-top:4px"></span>
           </div>
           <div class="field-group">
             <label>Soil Type <span style="color:#FF453A">*</span></label>
@@ -1652,6 +1653,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
         <div class="field-group">
           <label>Meters Laid</label>
           <input type="number" id="pipe-meters" placeholder="Auto-calculated" readonly style="opacity:0.7">
+          <span id="pipe-meters-badge" style="display:none;font-size:11px;font-weight:700;color:#30D158;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);border-radius:6px;padding:3px 8px;margin-top:4px"></span>
         </div>
         <!-- Starting Point -->
         <div class="field-group">
@@ -1746,6 +1748,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
         <div class="field-group">
           <label>Meters Refilled</label>
           <input type="number" id="ref-meters" placeholder="Auto-calculated" readonly style="opacity:0.7">
+          <span id="ref-meters-badge" style="display:none;font-size:11px;font-weight:700;color:#30D158;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);border-radius:6px;padding:3px 8px;margin-top:4px"></span>
         </div>
         <div class="field-group">
           <label>Road Restoration Status <span style="color:#FF453A">*</span></label>
@@ -2986,6 +2989,18 @@ function cancelForm() {
     document.getElementById('fit-photo-prev').innerHTML = '';
     document.querySelectorAll('#fit-type-grid .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
   } catch(e2) {}
+  // Clear ALL photo previews
+  document.querySelectorAll('.photo-previews').forEach(el => el.innerHTML = '');
+  // Clear ALL file inputs
+  document.querySelectorAll('input[type="file"]').forEach(el => { try { el.value = ''; } catch(e) {} });
+  // Clear ALL remarks/notes textareas
+  document.querySelectorAll('.form-section textarea').forEach(el => el.value = '');
+  // Clear ALL GPS lat/lon fields
+  document.querySelectorAll('.form-section input[id$="-lat"], .form-section input[id$="-lon"]').forEach(el => el.value = '');
+  // Clear meters display fields
+  ['exc-meters','pipe-meters','ref-meters'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   _editingReportId = null;
   document.querySelectorAll('.btn-primary.flex1[data-editing]').forEach(b => { b.textContent = 'Submit Report ✓'; delete b.dataset.editing; });
   document.querySelectorAll('.report-btn').forEach(b => b.classList.remove('selected'));
@@ -3100,8 +3115,19 @@ function limitPhotos(input, max) {
 function autoCalcMeters(prefix) {
   const from = parseFloat(document.getElementById(prefix + '-from').value) || 0;
   const to   = parseFloat(document.getElementById(prefix + '-to').value)   || 0;
+  const diff = to > from ? (to - from) : 0;
   const m    = document.getElementById(prefix + '-meters');
-  if (m && to > from) m.value = (to - from).toFixed(0);
+  if (m) {
+    m.value = diff > 0 ? diff.toFixed(0) : '';
+    m.style.color = diff > 0 ? '#30D158' : '';
+    m.style.fontWeight = diff > 0 ? '700' : '';
+  }
+  // Show badge
+  const badge = document.getElementById(prefix + '-meters-badge');
+  if (badge) {
+    badge.textContent = diff > 0 ? '📏 ' + diff + ' m' : '';
+    badge.style.display = diff > 0 ? 'inline-block' : 'none';
+  }
 }
 
 function calcExcVolume() {
