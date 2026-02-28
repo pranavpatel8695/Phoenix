@@ -1266,23 +1266,10 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
     </div>
     <button class="btn-primary" onclick="doLogin()">Sign In →</button>
     
-    <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
-      <p style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px">📦 Received a new version of the app? Restore your data first:</p>
-      <button onclick="document.getElementById('loginImportFile').click()"
-        style="width:100%;padding:11px;border-radius:10px;background:rgba(10,132,255,0.08);border:1px solid rgba(10,132,255,0.25);color:var(--blue);font-size:13px;font-family:inherit;cursor:pointer;font-weight:600">
-        📂 Import Backup to Restore Data
-      </button>
-      <input type="file" id="loginImportFile" accept=".json" style="display:none" onchange="importBackupFromLogin(this)">
-
-      <div id="syncCodeBox" style="display:none">
-        <input id="syncCodeInput" type="text" placeholder="Paste account code here..." autocapitalize="none" autocorrect="off" spellcheck="false"
-          style="width:100%;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;font-family:monospace;box-sizing:border-box;margin-bottom:6px">
-        <button onclick="applySyncCode(document.getElementById('syncCodeInput').value)"
-          style="width:100%;padding:10px;border-radius:10px;background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.35);color:var(--green);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">
-          ✅ Apply Legacy Code
-        </button>
-      </div>
+    <div id="syncCodeBox" style="display:none">
+      <input id="syncCodeInput" type="text">
     </div>
+    <input type="file" id="loginImportFile" accept=".json" style="display:none" onchange="importBackupFromLogin(this)">
   </div>
 </div>
 
@@ -1325,8 +1312,11 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           <div class="dash-date-day" id="dashDateLabel">—</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:11px;color:var(--muted)">Project</div>
-          <div style="font-size:13px;font-weight:600;color:var(--text)" id="dashSub">All Projects</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Project</div>
+          <select id="dashProjectFilter" onchange="updateDashboard()"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:4px 8px;font-family:inherit;max-width:140px">
+            <option value="">All Projects</option>
+          </select>
         </div>
       </div>
 
@@ -1737,11 +1727,11 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
         <div class="form-row">
           <div class="field-group">
             <label>Chainage From (m) <span style="color:#FF453A">*</span></label>
-            <input type="number" id="ref-from" placeholder="e.g. 500" oninput="autoCalcMeters('ref');checkDepHint('ref')">
+            <input type="number" id="ref-from" placeholder="e.g. 500" oninput="autoCalcMeters('ref');checkDepHint('ref');calcRefVolume()">
           </div>
           <div class="field-group">
             <label>Chainage To (m) <span style="color:#FF453A">*</span></label>
-            <input type="number" id="ref-to" placeholder="e.g. 580" oninput="autoCalcMeters('ref');checkDepHint('ref')">
+            <input type="number" id="ref-to" placeholder="e.g. 580" oninput="autoCalcMeters('ref');checkDepHint('ref');calcRefVolume()">
           </div>
         </div>
         <div id="ref-dep-hint" style="margin-bottom:10px"></div>
@@ -1749,6 +1739,20 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           <label>Meters Refilled</label>
           <input type="number" id="ref-meters" placeholder="Auto-calculated" readonly style="opacity:0.7">
           <span id="ref-meters-badge" style="display:none;font-size:11px;font-weight:700;color:#30D158;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);border-radius:6px;padding:3px 8px;margin-top:4px"></span>
+        </div>
+        <div class="form-row">
+          <div class="field-group">
+            <label>Width (m)</label>
+            <input type="number" id="ref-width" placeholder="e.g. 0.6" step="0.05" min="0" oninput="calcRefVolume()">
+          </div>
+          <div class="field-group">
+            <label>Depth (m)</label>
+            <input type="number" id="ref-depth" placeholder="e.g. 1.2" step="0.05" min="0" oninput="calcRefVolume()">
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Volume (cum)</label>
+          <input type="number" id="ref-volume" placeholder="Auto-calculated" readonly style="opacity:0.7;color:#30D158;font-weight:700">
         </div>
         <div class="field-group">
           <label>Road Restoration Status <span style="color:#FF453A">*</span></label>
@@ -1954,6 +1958,17 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
             </div>
           </div>
           </div>
+        </div>
+
+        <!-- Chamber Status -->
+        <div class="field-group">
+          <label>Chamber Status <span style="color:#FF453A">*</span></label>
+          <div class="radio-group" style="gap:6px;margin-top:4px">
+            <div class="radio-opt" onclick="selectRadio(this,'cham-status','Complete')" style="flex:1;text-align:center;font-size:12px">✅ Complete</div>
+            <div class="radio-opt" onclick="selectRadio(this,'cham-status','Partial')" style="flex:1;text-align:center;font-size:12px">⚡ Partial</div>
+            <div class="radio-opt" onclick="selectRadio(this,'cham-status','Incomplete')" style="flex:1;text-align:center;font-size:12px">⏳ Incomplete</div>
+          </div>
+          <input type="hidden" id="cham-status" value="">
         </div>
 
         <!-- GPS + Photo -->
@@ -2661,14 +2676,21 @@ function generateUpdateFile() {
   }
 
   const blob = new Blob([updated], { type: 'text/html' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
   const date = new Date().toISOString().slice(0,10);
-  a.download = 'PipelineWork_' + date + '.html';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  triggerDownload(blob, 'PipelineWork_' + date + '.html');
   const supCount = Object.keys(users).filter(u => users[u].role === 'supervisor').length;
   showToast('✅ Update file ready — ' + getReports().length + ' reports, ' + supCount + ' supervisors baked in');
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href    = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
 
 function exportFullBackup() {
@@ -2683,12 +2705,7 @@ function exportFullBackup() {
     kmz:         localStorage.getItem('aquatrack_kmz'),
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = 'PipelineWork_Backup_' + new Date().toISOString().slice(0,10) + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(blob, 'PipelineWork_Backup_' + new Date().toISOString().slice(0,10) + '.json');
   showToast('✅ Full backup downloaded');
 }
 
@@ -2795,10 +2812,7 @@ let currentRole = null;
 
 // Default built-in users — stored in localStorage so admin can manage them
 const DEFAULT_USERS = {
-  'admin':       { role: 'admin',      pass: 'admin',  name: 'Admin' },
-  'supervisor1': { role: 'supervisor', pass: 'pass',   name: 'Rajan' },
-  'supervisor2': { role: 'supervisor', pass: 'pass',   name: 'Kiran' },
-  'supervisor3': { role: 'supervisor', pass: 'pass',   name: 'Suresh' },
+  'admin': { role: 'admin', pass: 'admin', name: 'Admin' },
 };
 
 function getUsers() {
@@ -2838,34 +2852,42 @@ function doLogin() {
   const user = document.getElementById('loginUser').value.trim().toLowerCase().replace(/^@/,'');
   const pass = document.getElementById('loginPass').value;
   const users = getUsers();
+
+  // Always check local first — admin & previously logged-in supervisors work offline
   if (users[user] && users[user].pass === pass) {
     _doLoginSuccess(user);
-  } else {
-    // Not found locally — try Firebase
-    fbInit().then(function(ready) {
-      if (!ready || !_db) {
-        alert('Incorrect username or password.');
-        return;
-      }
-      _db.collection('_config').doc('adminData').get().then(function(doc) {
-        if (!doc.exists) { alert('Incorrect username or password.'); return; }
-        const d = doc.data();
-        const fbUsers = d.users || {};
-        if (fbUsers[user] && fbUsers[user].pass === pass) {
-          // Save all Firebase data locally
-          const existing = getUsers();
-          Object.assign(existing, fbUsers);
-          saveUsers(existing);
-          if (d.projects) localStorage.setItem('aquatrack_projects', JSON.stringify(d.projects));
-          if (d.routes)   localStorage.setItem('aquatrack_routes',   JSON.stringify(d.routes));
-          if (d.assignments) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
-          _doLoginSuccess(user);
-        } else {
-          alert('Incorrect username or password.');
-        }
-      }).catch(function() { alert('Incorrect username or password.'); });
-    });
+    return;
   }
+
+  // Not found locally — try Firebase (new supervisor on new device)
+  fbInit().then(function(ready) {
+    if (!ready || !_db) {
+      alert('Incorrect username or password.');
+      return;
+    }
+    _db.collection('_config').doc('adminData').get().then(function(doc) {
+      if (!doc.exists) { alert('Incorrect username or password.'); return; }
+      const d = doc.data();
+      const fbUsers = d.users || {};
+      if (fbUsers[user] && fbUsers[user].pass === pass) {
+        const existing = getUsers();
+        // Never overwrite local admin credentials with Firebase copy
+        Object.keys(fbUsers).forEach(function(u) {
+          if (fbUsers[u].role !== 'admin') existing[u] = fbUsers[u];
+        });
+        saveUsers(existing);
+        if (d.projects)    localStorage.setItem('aquatrack_projects',    JSON.stringify(d.projects));
+        if (d.routes)      localStorage.setItem('aquatrack_routes',      JSON.stringify(d.routes));
+        if (d.assignments) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
+        _doLoginSuccess(user);
+      } else {
+        alert('Incorrect username or password.');
+      }
+    }).catch(function(e) { 
+      console.warn('Firebase login check failed:', e);
+      alert('Incorrect username or password.');
+    });
+  });
 }
 
 async function _doLoginSuccess(user) {
@@ -2884,6 +2906,13 @@ async function _doLoginSuccess(user) {
     populateAllProjectDropdowns();
   }
   initApp();
+  // After initApp, re-trigger map route draw with delay (map may still be initializing)
+  if (currentRole === 'supervisor') {
+    setTimeout(function() {
+      const proj = getVisibleProjects()[0];
+      if (proj && typeof switchMapProject === 'function') switchMapProject(proj);
+    }, 1500);
+  }
 }
 
 function doLogout() {
@@ -2955,56 +2984,47 @@ function selectForm(type) {
 }
 
 function cancelForm() {
-  clearEncasingEntries();
-  clearValveEntries();
-  // Reset concrete qty fields
-  const estEl  = document.getElementById('str-est-conc');
-  const actEl  = document.getElementById('str-actual-conc');
-  const dispEl = document.getElementById('str-est-conc-display');
-  const diffEl = document.getElementById('str-conc-diff');
-  if (estEl)  estEl.value = '';
-  if (actEl)  actEl.value = '';
-  if (dispEl) { dispEl.textContent = '—'; dispEl.style.color = 'var(--muted)'; }
-  if (diffEl) { diffEl.innerHTML = ''; diffEl.style.display = 'none'; }
-  ['str-length','str-width','str-height','str-dia','str-vol-trench','str-vol-pipe'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
+  // Reset ALL form section fields completely
+  document.querySelectorAll('.form-section').forEach(function(form) {
+    // Clear text, number, date, hidden inputs
+    form.querySelectorAll('input:not([type="file"])').forEach(function(el) {
+      if (el.type === 'checkbox' || el.type === 'radio') { el.checked = false; }
+      else { el.value = ''; }
+    });
+    // Reset selects to first option
+    form.querySelectorAll('select').forEach(function(el) { el.selectedIndex = 0; });
+    // Clear textareas
+    form.querySelectorAll('textarea').forEach(function(el) { el.value = ''; });
+    // Clear photo previews
+    form.querySelectorAll('.photo-previews').forEach(function(el) { el.innerHTML = ''; });
+    // Clear file inputs
+    form.querySelectorAll('input[type="file"]').forEach(function(el) { try { el.value = ''; } catch(e){} });
+    // Remove radio selected state
+    form.querySelectorAll('.radio-opt').forEach(function(el) { el.classList.remove('selected'); });
+    // Hide conditional sections
+    form.querySelectorAll('[id$="-wrap"]').forEach(function(el) {
+      if (el.dataset.conditional) el.style.display = 'none';
+    });
   });
-  // Clear fitting form
-  try {
-    document.getElementById('fit-chainage').value = '';
-    document.getElementById('fit-qty').value = '1';
-    document.getElementById('fit-lat').value = '';
-    document.getElementById('fit-lon').value = '';
-    document.getElementById('fit-remarks').value = '';
-    document.getElementById('fit-type').value = '';
-    document.getElementById('fit-type-other').style.display = 'none';
-    document.getElementById('fit-thrust').value = '';
-    document.getElementById('val-chamber-req').value = '';
-    try {
-      document.getElementById('cham-slab-kept').value = '';
-      document.getElementById('precast-kept-wrap').style.display = 'none';
-      document.querySelectorAll('#precast-kept-wrap .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
-    } catch(e2) {}
-    document.querySelectorAll('#form-fitting .field-group .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
-    document.getElementById('fit-photo-prev').innerHTML = '';
-    document.querySelectorAll('#fit-type-grid .radio-opt').forEach(function(e){ e.classList.remove('selected'); });
-  } catch(e2) {}
-  // Clear ALL photo previews
-  document.querySelectorAll('.photo-previews').forEach(el => el.innerHTML = '');
-  // Clear ALL file inputs
-  document.querySelectorAll('input[type="file"]').forEach(el => { try { el.value = ''; } catch(e) {} });
-  // Clear ALL remarks/notes textareas
-  document.querySelectorAll('.form-section textarea').forEach(el => el.value = '');
-  // Clear ALL GPS lat/lon fields
-  document.querySelectorAll('.form-section input[id$="-lat"], .form-section input[id$="-lon"]').forEach(el => el.value = '');
-  // Clear meters display fields
-  ['exc-meters','pipe-meters','ref-meters'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
+
+  // Specific resets
+  try { clearEncasingEntries(); } catch(e){}
+  try { clearValveEntries(); } catch(e){}
+  try { document.getElementById('fit-qty').value = '1'; } catch(e){}
+  try { document.getElementById('fit-type-other').style.display = 'none'; } catch(e){}
+  try { document.getElementById('precast-kept-wrap').style.display = 'none'; } catch(e){}
+  try { document.getElementById('str-est-conc-display').textContent = '—'; } catch(e){}
+  try { document.getElementById('str-conc-diff').innerHTML = ''; document.getElementById('str-conc-diff').style.display = 'none'; } catch(e){}
+  // Clear meters badges
+  ['exc','pipe','ref'].forEach(function(p) {
+    var b = document.getElementById(p+'-meters-badge');
+    if (b) { b.textContent=''; b.style.display='none'; }
   });
+
   _editingReportId = null;
-  document.querySelectorAll('.btn-primary.flex1[data-editing]').forEach(b => { b.textContent = 'Submit Report ✓'; delete b.dataset.editing; });
-  document.querySelectorAll('.report-btn').forEach(b => b.classList.remove('selected'));
-  document.querySelectorAll('.form-section').forEach(f => { f.classList.remove('active'); f.style.display = 'none'; });
+  document.querySelectorAll('.btn-primary.flex1[data-editing]').forEach(function(b) { b.textContent = 'Submit Report ✓'; delete b.dataset.editing; });
+  document.querySelectorAll('.report-btn').forEach(function(b) { b.classList.remove('selected'); });
+  document.querySelectorAll('.form-section').forEach(function(f) { f.classList.remove('active'); f.style.display = 'none'; });
 }
 
 function togglePrecastInstalled(val) {
@@ -3138,6 +3158,14 @@ function calcExcVolume() {
   if (vol) vol.value = (meters && width && depth) ? (meters * width * depth).toFixed(2) : '';
 }
 
+function calcRefVolume() {
+  const meters = parseFloat(document.getElementById('ref-meters').value) || 0;
+  const width  = parseFloat(document.getElementById('ref-width').value)  || 0;
+  const depth  = parseFloat(document.getElementById('ref-depth').value)  || 0;
+  const vol = document.getElementById('ref-volume');
+  if (vol) vol.value = (meters && width && depth) ? (meters * width * depth).toFixed(2) : '';
+}
+
 
 // ========== EDIT REPORT ==========
 let _editingReportId = null;
@@ -3196,6 +3224,7 @@ function editReport(id) {
     } else if (r.type === 'refill') {
       set('ref-from', r.from); set('ref-to', r.to);
       set('ref-meters', r.meters); set('ref-road', r.road);
+      set('ref-width', r.width||''); set('ref-depth', r.depth||''); set('ref-volume', r.volume||'');
       set('ref-lat2', r.lat2 || ''); set('ref-lon2', r.lon2 || '');
     } else if (r.type === 'valve') {
       set('val-chainage', r.chainage);
@@ -3207,7 +3236,7 @@ function editReport(id) {
       }
 
     } else if (r.type === 'chamber') {
-      set('cham-type', r.chamType); set('cham-chainage', r.chainage);
+      set('cham-type', r.chamType); set('cham-chainage', r.chainage); set('cham-status', r.chamStatus||'');
       set('cham-length', r.length); set('cham-width', r.width); set('cham-height', r.height);
       if (r.slab) { document.querySelectorAll('#form-chamber .radio-opt').forEach(el => { if(el.textContent.trim()===r.slab) el.classList.add('selected'); }); togglePrecastInstalled(r.slab); }
       set('cham-slab', r.slab);
@@ -4156,6 +4185,9 @@ function submitReport(type) {
     data.date       = document.getElementById('ref-date').value;
     data.from       = from; data.to = to;
     data.meters     = to > from ? (to - from) : parseFloat(document.getElementById('ref-meters').value) || 0;
+    data.width      = parseFloat(document.getElementById('ref-width').value)  || null;
+    data.depth      = parseFloat(document.getElementById('ref-depth').value)  || null;
+    data.volume     = parseFloat(document.getElementById('ref-volume').value) || (data.width && data.depth ? parseFloat((data.meters * data.width * data.depth).toFixed(2)) : null);
     data.road       = document.getElementById('ref-road').value;
     data.lat        = parseFloat(document.getElementById('ref-lat').value) || null;
     data.lon        = parseFloat(document.getElementById('ref-lon').value) || null;
@@ -4242,6 +4274,7 @@ function submitReport(type) {
     data.route     = chamRoute;
     data.date      = document.getElementById('cham-date').value;
     data.chamType  = document.getElementById('cham-type').value;
+    data.chamStatus = document.getElementById('cham-status').value || 'Complete';
     data.chainage  = parseFloat(document.getElementById('cham-chainage').value) || null;
     data.valveRef  = valveRef;
     data.length    = parseFloat(document.getElementById('cham-length').value) || null;
@@ -4362,12 +4395,26 @@ function getReports() {
 
 // ========== DASHBOARD ==========
 function updateDashboard() {
+  // Populate project filter dropdown (admin only)
+  const filterEl = document.getElementById('dashProjectFilter');
+  if (filterEl) {
+    const projects = getVisibleProjects();
+    const current = filterEl.value;
+    filterEl.innerHTML = '<option value="">All Projects</option>' +
+      projects.map(p => `<option value="${p}" ${p===current?'selected':''}>${p}</option>`).join('');
+    filterEl.style.display = ''; // show for all roles
+  }
+  const selectedProject = filterEl ? filterEl.value : '';
+
   const reports = getReports();
   const visibleProjects = getVisibleProjects();
-  const visible = (currentRole === 'admin'
+  let visible = (currentRole === 'admin'
     ? reports
     : reports.filter(r => r.supervisor === currentUser))
     .filter(r => visibleProjects.indexOf(r.project) >= 0);
+
+  // Filter by selected project if chosen
+  if (selectedProject) visible = visible.filter(r => r.project === selectedProject);
 
   const today = new Date().toISOString().slice(0, 10);
   let excM=0, pipeM=0, refM=0, valC=0, strC=0, chamC=0, fitC=0, dayFit=0;
@@ -4392,6 +4439,8 @@ function updateDashboard() {
     const d = new Date();
     dateEl.textContent = d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'short' });
   }
+  const subEl = document.getElementById('dashSub');
+  if (subEl) subEl.textContent = selectedProject || 'All Projects';
 
   // Today
   const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
@@ -4412,7 +4461,7 @@ function updateDashboard() {
   set('statTotal',      visible.length);
 
   // Project progress bars — dynamic
-  const projects = getVisibleProjects();
+  const projects = selectedProject ? [selectedProject] : getVisibleProjects();
   const progCard = document.getElementById('progressBars');
   if (progCard) {
     progCard.innerHTML = projects.map((p, i) => {
@@ -5256,10 +5305,7 @@ function exportJSON() {
 
 function downloadFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
+  triggerDownload(blob, filename);
 }
 
 function clearData() {
@@ -5328,15 +5374,25 @@ function showPdfExportModal() {
   const projects = getVisibleProjects();
   const sel = document.getElementById('pdfProject');
   sel.innerHTML = projects.map(p => `<option value="${p}">${p}</option>`).join('');
-  document.getElementById('pdfDate').value = new Date().toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0,10);
+  const monthStart = today.slice(0,8) + '01';
+  document.getElementById('pdfDateFrom').value = monthStart;
+  document.getElementById('pdfDateTo').value   = today;
   document.getElementById('pdfModal').classList.remove('hidden');
 }
 
 function exportPDF(mode) {
   document.getElementById('pdfModal').classList.add('hidden');
   const selectedProject = document.getElementById('pdfProject')?.value || getProjects()[0];
-  const selectedDate    = document.getElementById('pdfDate')?.value || new Date().toISOString().slice(0,10);
-  const allReports = getReports();
+  const dateFrom = document.getElementById('pdfDateFrom')?.value || new Date().toISOString().slice(0,10);
+  const dateTo   = document.getElementById('pdfDateTo')?.value   || dateFrom;
+  // Strip photos from all reports before export
+  const allReports = getReports().map(r => {
+    const clean = Object.assign({}, r);
+    delete clean.photos; delete clean.photosStart; delete clean.photosEnd;
+    Object.keys(clean).forEach(k => { if (k.endsWith('Photo')) delete clean[k]; });
+    return clean;
+  });
 
   const TYPE_COLORS = {
     excavation: '#FF9F0A', pipe:'#0A84FF', refill:'#30D158',
@@ -5380,11 +5436,12 @@ function exportPDF(mode) {
 
   let bodyHTML = '';
 
-  if (mode === 'daily') {
-    const reports = allReports.filter(r =>
-      r.project === selectedProject &&
-      (r.date === selectedDate || (r.timestamp||'').startsWith(selectedDate))
-    );
+  if (mode === 'daily' || mode === 'range') {
+    const reports = allReports.filter(r => {
+      if (r.project !== selectedProject) return false;
+      const d = r.date || (r.timestamp||'').slice(0,10);
+      return d >= dateFrom && d <= dateTo;
+    });
     const supervisors = [...new Set(reports.map(r=>r.supervisor))].join(', ') || '-';
 
     const excM  = reports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(r.meters||0),0);
@@ -5394,7 +5451,8 @@ function exportPDF(mode) {
   const chamC_all1 = reports.filter(r=>r.type==='chamber').length;
     const strC  = reports.filter(r=>r.type==='structure').length;
 
-    bodyHTML += pageHeader('Daily Progress Report', `${selectedProject} | ${selectedDate}`);
+    const dateLabel = dateFrom === dateTo ? dateFrom : dateFrom + ' → ' + dateTo;
+    bodyHTML += pageHeader('Progress Report', `${selectedProject} | ${dateLabel}`);
     bodyHTML += `<div style="padding:0 24px">`;
     bodyHTML += `<div style="color:#888;font-size:11px;margin-bottom:16px">Generated: ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; Total Reports: ${reports.length} &nbsp;|&nbsp; Supervisor(s): ${supervisors}</div>`;
 
@@ -5415,20 +5473,90 @@ function exportPDF(mode) {
         cols:['Route','From(m)','To(m)','Length','Size','Material','Supervisor'],
         row: r => [r.route||'-', r.from||0, r.to||0, fmtM(r.meters), r.size||'-', r.material||'-', r.supervisor] },
       { key:'refill', label:'Refilling',
-        cols:['Route','From(m)','To(m)','Length','Road Status','Supervisor'],
-        row: r => [r.route||'-', r.from||0, r.to||0, fmtM(r.meters), r.road||'-', r.supervisor] },
+        cols:['Route','From(m)','To(m)','Length','Width(m)','Depth(m)','Volume(cum)','Road Status','Supervisor'],
+        row: r => [r.route||'-', r.from||0, r.to||0, fmtM(r.meters), r.width||'-', r.depth||'-', r.volume||'-', r.road||'-', r.supervisor] },
       { key:'valve', label:'Valves',
         cols:['Type','Size','Chainage(m)','Depth(m)','Supervisor'],
         row: r => [r.valType||'-', r.size||'-', r.chainage||'-', r.depth||'-', r.supervisor] },
       { key:'chamber', label:'Chamber',
-        cols:['Type','Chainage(m)','L(m)','W(m)','H(m)','Slab','Slab Installed','Supervisor'],
-        row: r => [r.chamType||'-', r.chainage||'-', r.length||'-', r.width||'-', r.height||'-', r.slab||'-', r.slab==='Precast'?(r.slabInstalled||'-'):'-', r.supervisor] },
+        cols:['Type','Chainage(m)','L(m)','W(m)','H(m)','Slab','Status','Supervisor'],
+        row: r => [r.chamType||'-', r.chainage||'-', r.length||'-', r.width||'-', r.height||'-', r.slab||'-', r.chamStatus||'Complete', r.supervisor] },
 
       { key:'structure', label:'Concrete Work',
-        cols:['Type','Chainage(m)','Supervisor'],
-        row: r => [r.strType||'-', r.chainage||'-', r.supervisor] },
+        cols:['Type','Chainage(m)','Volume(m³)','Supervisor'],
+        row: r => [r.strType||'-', r.chainage||'-', r.actualConc||'-', r.supervisor] },
     ];
 
+    // ── SUMMARY TOTALS SECTION ─────────────────────────────────────────────
+    const excReps  = reports.filter(r=>r.type==='excavation');
+    const pipeReps = reports.filter(r=>r.type==='pipe');
+    const refReps  = reports.filter(r=>r.type==='refill');
+    const chamReps = reports.filter(r=>r.type==='chamber');
+    const strReps  = reports.filter(r=>r.type==='structure');
+
+    // Excavation totals
+    const excTotalM   = excReps.reduce((s,r)=>s+(r.meters||0),0);
+    const excTotalVol = excReps.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
+    // Pipe totals
+    const pipeTotalM  = pipeReps.reduce((s,r)=>s+(r.meters||0),0);
+    // Refill totals
+    const refTotalM   = refReps.reduce((s,r)=>s+(r.meters||0),0);
+    // Chamber totals
+    const chamComplete   = chamReps.filter(r=>(r.chamStatus||'Complete')==='Complete').length;
+    const chamPartial    = chamReps.filter(r=>r.chamStatus==='Partial').length;
+    const chamIncomplete = chamReps.filter(r=>r.chamStatus==='Incomplete').length;
+    // Concrete totals
+    const ccVol  = strReps.filter(r=>r.strType==='CC Encasing').reduce((s,r)=>s+(parseFloat(r.actualConc)||0),0);
+    const rccVol = strReps.filter(r=>r.strType==='RCC Encasing').reduce((s,r)=>s+(parseFloat(r.actualConc)||0),0);
+    const tbVol  = strReps.filter(r=>r.strType==='Thrust Block').reduce((s,r)=>s+(parseFloat(r.actualConc)||0),0);
+    const ccCnt  = strReps.filter(r=>r.strType==='CC Encasing').length;
+    const rccCnt = strReps.filter(r=>r.strType==='RCC Encasing').length;
+    const tbCnt  = strReps.filter(r=>r.strType==='Thrust Block').length;
+
+    bodyHTML += sectionTitle('📊 Summary Totals', '#1e1e28');
+    bodyHTML += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">`;
+
+    if (excReps.length) bodyHTML += `<div style="background:#fff7e6;border:1px solid #FF9F0A;border-radius:8px;padding:10px 12px">
+      <div style="font-size:11px;font-weight:700;color:#FF9F0A;margin-bottom:6px">⛏️ EXCAVATION</div>
+      <div style="font-size:12px">Total Length: <b>${fmtM(excTotalM)}</b></div>
+      <div style="font-size:12px">Total Volume: <b>${excTotalVol.toFixed(2)} m³</b></div>
+      <div style="font-size:11px;color:#888;margin-top:2px">${excReps.length} records</div>
+    </div>`;
+
+    if (pipeReps.length) bodyHTML += `<div style="background:#e8f4ff;border:1px solid #0A84FF;border-radius:8px;padding:10px 12px">
+      <div style="font-size:11px;font-weight:700;color:#0A84FF;margin-bottom:6px">🔩 PIPE LAYING</div>
+      <div style="font-size:12px">Total Length: <b>${fmtM(pipeTotalM)}</b></div>
+      <div style="font-size:11px;color:#888;margin-top:2px">${pipeReps.length} records</div>
+    </div>`;
+
+    const refTotalVol = refReps.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
+    if (refReps.length) bodyHTML += `<div style="background:#e8fff0;border:1px solid #30D158;border-radius:8px;padding:10px 12px">
+      <div style="font-size:11px;font-weight:700;color:#30D158;margin-bottom:6px">🪣 REFILLING</div>
+      <div style="font-size:12px">Total Length: <b>${fmtM(refTotalM)}</b></div>
+      <div style="font-size:12px">Total Volume: <b>${refTotalVol.toFixed(2)} cum</b></div>
+      <div style="font-size:11px;color:#888;margin-top:2px">${refReps.length} records</div>
+    </div>`;
+
+    if (chamReps.length) bodyHTML += `<div style="background:#fff3e0;border:1px solid #FF9500;border-radius:8px;padding:10px 12px">
+      <div style="font-size:11px;font-weight:700;color:#FF9500;margin-bottom:6px">🏛️ CHAMBERS</div>
+      <div style="font-size:12px">✅ Complete: <b>${chamComplete}</b></div>
+      <div style="font-size:12px">⚡ Partial: <b>${chamPartial}</b></div>
+      <div style="font-size:12px">⏳ Incomplete: <b>${chamIncomplete}</b></div>
+      <div style="font-size:11px;color:#888;margin-top:2px">Total: ${chamReps.length}</div>
+    </div>`;
+
+    if (strReps.length) bodyHTML += `<div style="background:#f3e8ff;border:1px solid #BF5AF2;border-radius:8px;padding:10px 12px;grid-column:1/-1">
+      <div style="font-size:11px;font-weight:700;color:#BF5AF2;margin-bottom:6px">🏗️ CONCRETE WORK</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div><div style="font-size:11px;color:#666">CC Encasing</div><div style="font-size:12px"><b>${fmtM(ccVol)} (${ccCnt} nos)</b></div></div>
+        <div><div style="font-size:11px;color:#666">RCC Encasing</div><div style="font-size:12px"><b>${fmtM(rccVol)} (${rccCnt} nos)</b></div></div>
+        <div><div style="font-size:11px;color:#666">Thrust Block</div><div style="font-size:12px"><b>${fmtM(tbVol)} (${tbCnt} nos)</b></div></div>
+      </div>
+    </div>`;
+
+    bodyHTML += `</div>`;
+
+    // ── DETAIL TABLES ───────────────────────────────────────────────────────
     typeConfigs.forEach(tc => {
       const reps = reports.filter(r => r.type === tc.key);
       if (!reps.length) return;
@@ -5436,7 +5564,7 @@ function exportPDF(mode) {
       bodyHTML += tableHTML(tc.cols, reps.map(tc.row), TYPE_COLORS[tc.key]);
     });
 
-    if (!reports.length) bodyHTML += `<div style="text-align:center;color:#888;padding:40px">No reports submitted on this date.</div>`;
+    if (!reports.length) bodyHTML += `<div style="text-align:center;color:#888;padding:40px">No reports found for this date range.</div>`;
     bodyHTML += `</div>`;
 
   } else {
@@ -5597,7 +5725,7 @@ function exportPDF(mode) {
   const a    = document.createElement('a');
   a.href     = url;
   a.download = mode === 'daily'
-    ? 'PipelineWork_Daily_' + selectedDate + '.html'
+    ? 'PipelineWork_Report_' + dateFrom + '_to_' + dateTo + '.html'
     : 'PipelineWork_FullReport_' + new Date().toISOString().slice(0,10) + '.html';
   document.body.appendChild(a);
   a.click();
@@ -6096,7 +6224,12 @@ async function syncSupervisorProjects(username) {
         }
         populateAllProjectDropdowns();
         showToast('✅ Routes & projects loaded');
-        if (typeof initApp === 'function') initApp();
+        // Redraw map with synced routes
+        if (typeof switchMapProject === 'function' && typeof _mapActiveProject !== 'undefined') {
+          switchMapProject(_mapActiveProject || getVisibleProjects()[0]);
+        }
+        renderMapProjectTabs();
+        if (typeof updateDashboard === 'function') updateDashboard();
       }
     } catch(e) { console.warn('Supervisor sync failed:', e); }
   }
@@ -6210,6 +6343,7 @@ function renderProjectTabs() {
 // Global registry - safest way to call functions from dynamic HTML on all mobile browsers
 window._supCopy   = [];
 window._supDelete = [];
+window._supShare  = [];
 
 function renderSupervisorAccounts() {
   const el = document.getElementById('supervisorAccountList');
@@ -6225,9 +6359,14 @@ function renderSupervisorAccounts() {
   // Reset and populate global action arrays indexed by position
   window._supCopy   = [];
   window._supDelete = [];
+  window._supShare  = [];
   supervisors.forEach(function(username) {
     window._supCopy.push(function()   { docopySyncCode(username);    });
     window._supDelete.push(function() { dodeleteSupervisor(username); });
+    window._supShare.push((function(u, rec) { return function() {
+      var msg = '👷 Pipeline Work Login%0AUsername: ' + u + '%0APassword: ' + rec.pass + '%0A%0AOpen app and sign in with these credentials.';
+      window.open('https://wa.me/?text=' + msg, '_blank');
+    }; })(username, u));
   });
 
   el.innerHTML = supervisors.map(function(username, i) {
@@ -6247,16 +6386,10 @@ function renderSupervisorAccounts() {
             '</div>',
             '<div style="font-size:10px;color:var(--muted);margin-top:2px">📁 ', projList, '</div>',
           '</div>',
+          '<button onclick="window._supShare[', i, ']()" style="background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.4);border-radius:8px;padding:6px 12px;color:#30D158;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;flex-shrink:0;margin-right:6px">📤 Share</button>',
           '<button onclick="window._supDelete[', i, ']()" style="background:rgba(255,69,58,0.12);border:1px solid rgba(255,69,58,0.4);border-radius:8px;padding:6px 12px;color:#FF453A;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;flex-shrink:0">Remove</button>',
         '</div>',
-        '<div style="padding:0 12px 10px">',
-          '<button onclick="window._supCopy[', i, ']()" style="width:100%;padding:11px;border-radius:8px;background:rgba(48,209,88,0.15);border:1px solid rgba(48,209,88,0.4);color:#30D158;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">',
-            '📋 Copy Account Code',
-          '</button>',
-        '</div>',
-        '<div style="margin:0 12px 10px;padding:8px 10px;background:rgba(10,132,255,0.07);border:1px solid rgba(10,132,255,0.2);border-radius:8px;font-size:11px;color:var(--muted)">',
-          '💡 Send this code to supervisor via WhatsApp. They open app → <b style="color:var(--text)">Enter Account Code</b> → paste → logged in automatically',
-        '</div>',
+
       '</div>'
     ].join('');
   }).join('');
@@ -7255,18 +7388,24 @@ runMigrations(); seedDemoData(); populateAllProjectDropdowns();
   <!-- PDF Export Modal -->
   <div id="pdfModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;width:100%;max-width:340px">
-      <h3 style="font-size:17px;font-weight:700;margin-bottom:16px">📑 Daily PDF Report</h3>
+      <h3 style="font-size:17px;font-weight:700;margin-bottom:16px">📑 Generate Report</h3>
       <div class="field-group" style="margin-bottom:12px">
         <label>Project</label>
         <select id="pdfProject"></select>
       </div>
-      <div class="field-group" style="margin-bottom:16px">
-        <label>Date</label>
-        <input type="date" id="pdfDate">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div class="field-group" style="flex:1;margin:0">
+          <label>From Date</label>
+          <input type="date" id="pdfDateFrom">
+        </div>
+        <div class="field-group" style="flex:1;margin:0">
+          <label>To Date</label>
+          <input type="date" id="pdfDateTo">
+        </div>
       </div>
       <div style="display:flex;gap:10px">
         <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer" onclick="document.getElementById('pdfModal').classList.add('hidden')">Cancel</button>
-        <button style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer" onclick="exportPDF('daily')">Generate PDF</button>
+        <button style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer" onclick="exportPDF('range')">Generate</button>
       </div>
     </div>
   </div>
