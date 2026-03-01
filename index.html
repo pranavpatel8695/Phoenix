@@ -1075,7 +1075,7 @@ async function fbInit() {
     if (!loaded || typeof firebase === 'undefined') { console.warn('Firebase SDK failed to load'); return false; }
     _fbApp = firebase.initializeApp(FB_CONFIG);
     _db    = firebase.firestore();
-    _db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    // Persistence disabled for faster startup
     console.log('Firebase ready ✅');
     return true;
   } catch(e) { console.warn('Firebase init failed:', e); return false; }
@@ -1088,18 +1088,12 @@ async function fbSaveReport(data) {
   if (!ready || !_db) return false;
   try {
     const payload = Object.assign({}, data);
-    // Strip huge base64 photos if doc would exceed 1MB Firestore limit
-    // Compress: keep only first 2 photos per report, resize to ~200KB each
-    const photoFields = ['photos','photosStart','photosEnd'];
-    for (const field of photoFields) {
-      if (payload[field] && payload[field].length) {
-        payload[field] = await Promise.all(
-          payload[field].slice(0,3).map(p => compressBase64(p, 0.5))
-        );
-      }
-    }
-    payload.savedAt   = firebase.firestore.FieldValue.serverTimestamp();
-    payload.photoExp  = Date.now() + 30*24*60*60*1000; // 30-day expiry marker
+    // Photos already compressed to 50KB on capture — just cap to 3 per field
+    ['photos','photosStart','photosEnd'].forEach(function(f) {
+      if (payload[f] && payload[f].length > 3) payload[f] = payload[f].slice(0, 3);
+    });
+    payload.savedAt  = Date.now(); // use client timestamp for speed (no server round-trip)
+    payload.photoExp = Date.now() + 30*24*60*60*1000;
     await _db.collection('reports').doc(String(data.id)).set(payload);
     return true;
   } catch(e) { console.warn('Firestore save failed:', e); return false; }
@@ -1168,8 +1162,14 @@ async function fbLoadReports() {
   const ready = await fbInit();
   if (!ready || !_db) return null;
   try {
-    const snap = await _db.collection('reports').get();
-    return snap.docs.map(d => d.data());
+    // Only fetch reports updated since last sync (incremental)
+    const lastSync = parseInt(localStorage.getItem('_fbLastSync') || '0');
+    let query = _db.collection('reports');
+    if (lastSync > 0) {
+      query = query.where('savedAt', '>', lastSync - 5000); // 5s buffer
+    }
+    const snap = await query.get();
+    return snap.docs.map(function(d){ return d.data(); });
   } catch(e) { console.warn('Firestore load failed:', e); return null; }
 }
 
@@ -1192,15 +1192,17 @@ async function fbSync() {
     if (!deletedSet.has(sid)) remoteMap[sid] = r;
   });
 
-  // Push local-only reports to Firebase (reports submitted offline)
-  const uploadPromises = [];
-  local.forEach(function(r) {
+  // Push local-only reports to Firebase (submitted offline), in parallel
+  const toUpload = local.filter(function(r) {
     const sid = String(r.id);
-    if (!deletedSet.has(sid) && !remoteMap[sid]) {
-      uploadPromises.push(fbSaveReport(r));
-    }
+    return !deletedSet.has(sid) && !remoteMap[sid];
   });
-  if (uploadPromises.length) await Promise.all(uploadPromises);
+  if (toUpload.length) {
+    // Upload in batches of 5 to avoid overwhelming connection
+    for (let i = 0; i < toUpload.length; i += 5) {
+      await Promise.all(toUpload.slice(i, i+5).map(function(r){ return fbSaveReport(r); }));
+    }
+  }
 
   // Merge: local wins if newer timestamp, else remote wins
   const mergedMap = {};
@@ -1219,6 +1221,7 @@ async function fbSync() {
 
   const merged = Object.values(mergedMap);
   localStorage.setItem('aquatrack_reports', JSON.stringify(merged));
+  localStorage.setItem('_fbLastSync', String(Date.now()));
   fbUpdateStatus('synced');
   updateDashboard();
   refreshMapPins();
@@ -1262,7 +1265,7 @@ async function fbCleanExpiredPhotos() {
 }
 
 // Auto-sync every 60s when online
-setInterval(() => { if (navigator.onLine) fbSync(); }, 60000);
+setInterval(() => { if (navigator.onLine) fbSync(); }, 15000);
 window.addEventListener('online', () => fbSync());
 // Clean expired photos once per day
 const _lastClean = localStorage.getItem('_fbLastClean');
@@ -4521,7 +4524,6 @@ function doSaveReport(type, data) {
   fbUpdateStatus('saving');
   fbSaveReport(data).then(ok => {
     fbUpdateStatus(ok ? 'synced' : 'offline');
-    if (ok) showToast('☁️ Synced to cloud');
   });
 }
 
