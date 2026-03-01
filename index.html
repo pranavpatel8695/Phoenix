@@ -1150,83 +1150,75 @@ function compressToTargetSize(dataUrl, targetKB) {
   });
 }
 
-// ── Delete report from Firestore ────────────────────────────────────────────
+// ── Delete report: remove from Firestore + record in _deletions collection ──
 async function fbDeleteReport(id) {
   const ready = await fbInit();
   if (!ready || !_db) return false;
-  try { await _db.collection('reports').doc(String(id)).delete(); return true; } catch(e) { return false; }
-}
-
-// ── Load all reports from Firestore ────────────────────────────────────────
-async function fbLoadReports() {
-  const ready = await fbInit();
-  if (!ready || !_db) return null;
   try {
-    // Only fetch reports updated since last sync (incremental)
-    const lastSync = parseInt(localStorage.getItem('_fbLastSync') || '0');
-    let query = _db.collection('reports');
-    if (lastSync > 0) {
-      query = query.where('savedAt', '>', lastSync - 5000); // 5s buffer
-    }
-    const snap = await query.get();
-    return snap.docs.map(function(d){ return d.data(); });
-  } catch(e) { console.warn('Firestore load failed:', e); return null; }
+    const sid = String(id);
+    // Delete the report doc
+    await _db.collection('reports').doc(sid).delete();
+    // Record deletion so ALL devices know to remove it
+    await _db.collection('_deletions').doc(sid).set({ id: sid, deletedAt: Date.now() });
+    return true;
+  } catch(e) { console.warn('fbDeleteReport failed:', e); return false; }
 }
 
-// ── Sync: pull Firestore → localStorage ────────────────────────────────────
+// ── Full sync: Firestore is source of truth ─────────────────────────────────
 async function fbSync() {
   const ready = await fbInit();
   if (!ready) { fbUpdateStatus('offline'); return; }
   fbUpdateStatus('syncing');
-  const remote = await fbLoadReports();
-  if (!remote) { fbUpdateStatus('offline'); return; }
 
-  const deletedIds = JSON.parse(localStorage.getItem('aquatrack_deleted_ids') || '[]');
-  const deletedSet = new Set(deletedIds.map(String));
-  const local = JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
+  try {
+    // 1. Fetch all current reports from Firestore
+    const snap = await _db.collection('reports').get();
+    const remote = snap.docs.map(function(d){ return d.data(); });
 
-  // Build remote map (skip deleted)
-  const remoteMap = {};
-  remote.forEach(function(r) {
-    const sid = String(r.id);
-    if (!deletedSet.has(sid)) remoteMap[sid] = r;
-  });
+    // 2. Fetch all deletions from Firestore
+    const delSnap = await _db.collection('_deletions').get();
+    const deletedSet = new Set(delSnap.docs.map(function(d){ return String(d.data().id); }));
 
-  // Push local-only reports to Firebase (submitted offline), in parallel
-  const toUpload = local.filter(function(r) {
-    const sid = String(r.id);
-    return !deletedSet.has(sid) && !remoteMap[sid];
-  });
-  if (toUpload.length) {
-    // Upload in batches of 5 to avoid overwhelming connection
-    for (let i = 0; i < toUpload.length; i += 5) {
-      await Promise.all(toUpload.slice(i, i+5).map(function(r){ return fbSaveReport(r); }));
+    // 3. Build authoritative map from remote (Firestore is truth)
+    const remoteMap = {};
+    remote.forEach(function(r) {
+      const sid = String(r.id);
+      if (!deletedSet.has(sid)) remoteMap[sid] = r;
+    });
+
+    // 4. Push local-only reports (submitted while offline) to Firestore
+    const local = JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
+    const toUpload = local.filter(function(r) {
+      const sid = String(r.id);
+      return !deletedSet.has(sid) && !remoteMap[sid];
+    });
+    if (toUpload.length) {
+      for (let i = 0; i < toUpload.length; i += 5) {
+        await Promise.all(toUpload.slice(i, i+5).map(function(r){ return fbSaveReport(r); }));
+      }
+      // Re-fetch after upload so we have full set
+      const snap2 = await _db.collection('reports').get();
+      snap2.docs.forEach(function(d) {
+        const r = d.data();
+        const sid = String(r.id);
+        if (!deletedSet.has(sid)) remoteMap[sid] = r;
+      });
     }
+
+    // 5. Firestore is authoritative — replace local storage completely
+    const merged = Object.values(remoteMap);
+    localStorage.setItem('aquatrack_reports', JSON.stringify(merged));
+
+    fbUpdateStatus('synced');
+    updateDashboard();
+    refreshMapPins();
+    if (typeof renderTracker === 'function') renderTracker();
+    if (typeof renderAllReports === 'function') renderAllReports();
+
+  } catch(e) {
+    console.warn('fbSync failed:', e);
+    fbUpdateStatus('offline');
   }
-
-  // Merge: local wins if newer timestamp, else remote wins
-  const mergedMap = {};
-  local.forEach(function(r) {
-    if (!deletedSet.has(String(r.id))) mergedMap[String(r.id)] = r;
-  });
-  remote.forEach(function(r) {
-    const sid = String(r.id);
-    if (deletedSet.has(sid)) return;
-    const loc = mergedMap[sid];
-    // Remote wins if it has a newer savedAt or local doesn't exist
-    if (!loc || (r.savedAt && loc.savedAt && r.savedAt > loc.savedAt)) {
-      mergedMap[sid] = r;
-    }
-  });
-
-  const merged = Object.values(mergedMap);
-  localStorage.setItem('aquatrack_reports', JSON.stringify(merged));
-  localStorage.setItem('_fbLastSync', String(Date.now()));
-  fbUpdateStatus('synced');
-  updateDashboard();
-  refreshMapPins();
-  if (typeof renderTracker === 'function') renderTracker();
-  if (typeof renderAllReports === 'function') renderAllReports();
 }
 
 // ── Status indicator ───────────────────────────────────────────────────────
@@ -4522,8 +4514,9 @@ function doSaveReport(type, data) {
 
   // Save to Firebase in background
   fbUpdateStatus('saving');
-  fbSaveReport(data).then(ok => {
+  fbSaveReport(data).then(function(ok) {
     fbUpdateStatus(ok ? 'synced' : 'offline');
+    if (!ok) showToast('⚠️ Will sync when online');
   });
 }
 
@@ -4791,20 +4784,19 @@ function deleteReport(id) {
     depWarn ? '⚠️ Dependency Warning' : 'Delete Report',
     delMsg,
     function() {
+      // Remove from local immediately
       var updated = getReports().filter(function(x) { return String(x.id) !== String(id); });
       localStorage.setItem('aquatrack_reports', JSON.stringify(updated));
-      // Track deleted ID so fbSync doesn't restore it
-      var delIds = JSON.parse(localStorage.getItem('aquatrack_deleted_ids') || '[]');
-      if (!delIds.includes(String(id))) delIds.push(String(id));
-      localStorage.setItem('aquatrack_deleted_ids', JSON.stringify(delIds));
       updateDashboard();
       renderAllReports();
       refreshMapPins();
       if (typeof renderTracker === 'function') renderTracker();
       showToast('🗑️ Deleted');
+      // Delete from Firestore + record in _deletions so all devices sync
       fbUpdateStatus('saving');
       fbDeleteReport(id).then(function(ok) {
         fbUpdateStatus(ok ? 'synced' : 'offline');
+        if (!ok) showToast('⚠️ Delete will sync when online');
       });
     }
   );
