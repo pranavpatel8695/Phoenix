@@ -6685,11 +6685,15 @@ function openAddSupervisorModal() {
   document.getElementById('newSupvName').value = '';
   document.getElementById('newSupvUser').value = '';
   document.getElementById('newSupvPass').value = '';
-  document.getElementById('addSupvModal').classList.remove('hidden');
+  const m = document.getElementById('addSupvModal');
+  m.classList.remove('hidden');
+  m.style.display = 'flex';
   setTimeout(function(){ document.getElementById('newSupvName').focus(); }, 80);
 }
 function closeAddSupervisorModal() {
-  document.getElementById('addSupvModal').classList.add('hidden');
+  const m = document.getElementById('addSupvModal');
+  m.classList.add('hidden');
+  m.style.display = '';
 }
 function confirmAddSupervisor() {
   const name = document.getElementById('newSupvName').value.trim();
