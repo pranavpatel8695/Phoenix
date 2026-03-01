@@ -2232,48 +2232,26 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
 
     <!-- ===== MAP TAB ===== -->
     <div id="tab-map" class="hidden">
-      <div class="section-header">Map View</div>
-      <p class="section-sub" id="mapSubtitle">Satellite map · GPS pins · KMZ routes overlay</p>
+      <div class="section-header">Progress Diagram</div>
+      <p class="section-sub">Chainage-based work progress · All routes · All form types</p>
 
-      <!-- Project selector + controls -->
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-        <div class="project-tab-row" id="mapProjTabs" style="margin-bottom:0;flex:1"></div>
-        <button class="btn-export" onclick="mapFitToKMZ()" style="flex:none;padding:8px 12px;font-size:12px;min-width:auto">🎯 Fit</button>
-        <button class="btn-export" onclick="mapFitToPins()" style="flex:none;padding:8px 12px;font-size:12px;min-width:auto">📍 Pins</button>
-      </div>
+      <!-- Project tabs -->
+      <div class="project-tab-row" id="mapProjTabs" style="margin-bottom:12px"></div>
 
       <!-- Legend -->
-      <div class="map-legend">
-        <div class="legend-item"><div style="width:22px;height:5px;background:#FF6B00;border-radius:3px;border:1px solid #000"></div>KMZ Route</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#FF9F0A;border-radius:3px"></div>Excavation</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#0A84FF;border-radius:3px"></div>Pipe Laying</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#30D158;border-radius:3px"></div>Refilling</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#FF453A;border-radius:3px"></div>Valves</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#FF9500;border-radius:3px"></div>Chamber</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#BF5AF2;border-radius:3px"></div>Concrete</div>
-        <div class="legend-item"><div style="width:22px;height:5px;background:#5AC8FA;border-radius:3px"></div>Fittings</div>
+      <div class="map-legend" style="flex-wrap:wrap;gap:6px 12px;margin-bottom:12px">
+        <div class="legend-item"><div style="width:14px;height:14px;background:rgba(255,159,10,0.5);border:2px solid #FF9F0A;border-radius:3px"></div>Excavation</div>
+        <div class="legend-item"><div style="width:14px;height:14px;background:rgba(10,132,255,0.5);border:2px solid #0A84FF;border-radius:3px"></div>Pipe Laying</div>
+        <div class="legend-item"><div style="width:14px;height:14px;background:rgba(48,209,88,0.5);border:2px solid #30D158;border-radius:3px"></div>Refilling</div>
+        <div class="legend-item">🔧 Valve</div>
+        <div class="legend-item">🏛️ Chamber</div>
+        <div class="legend-item">🔗 Fitting</div>
+        <div class="legend-item">🏗️ Concrete</div>
       </div>
 
-      <!-- Leaflet map -->
-      <div id="leafletMap"></div>
-      <div class="map-hint" id="mapHint">👆 Tap a segment or pin for details · Pinch to zoom</div>
-
-      <!-- Chainage breakdown panel -->
-      <div class="card" style="margin-bottom:12px">
-        <div class="card-title">📏 Chainage Progress by Route</div>
-        <div id="chainage-panel">
-          <div style="font-size:12px;color:var(--muted);padding:8px 0">Loading...</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">📌 Report Locations</div>
-        <div id="mapList">
-          <div class="empty-state">
-            <div class="es-icon">🗺️</div>
-            <p>No GPS data yet. Submit reports with location to see pins here.</p>
-          </div>
-        </div>
+      <!-- Diagram area -->
+      <div id="chainageDiagram">
+        <div class="empty-state"><div class="es-icon">📊</div><p>No routes yet. Add routes in Settings.</p></div>
       </div>
     </div>
 
@@ -2420,67 +2398,49 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
         <div class="route-admin-list" id="routeAdminList"></div>
 
         <!-- Add Route button -->
-        <button class="btn-secondary" onclick="startPickMode()" id="addRouteBtn" style="width:100%;margin-bottom:0">
-          + Add Route — Tap from Map
+        <button class="btn-secondary" onclick="openAddRouteForm()" id="addRouteBtn" style="width:100%;margin-bottom:0">
+          ＋ Add New Route
         </button>
 
-        <!-- PICK MODE — shown when admin taps "+ Add Route" -->
-        <div id="addRoutePanel" class="hidden" style="margin-top:14px">
+        <!-- Add Route Form (inline, no map needed) -->
+        <div id="addRoutePanel" class="hidden" style="margin-top:14px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">🛣️ New Route</div>
 
-          <!-- Mini map for picking -->
-          <div id="settingsMapWrap">
-            <div id="settingsMapNoKmz" class="no-kmz-msg hidden">
-              ℹ️ No KMZ for this project — you can still add routes manually below.
-              KMZ is optional and only needed for visual reference.
+          <div class="field-group">
+            <label>Route Name <span style="color:#FF453A">*</span></label>
+            <input type="text" id="newRouteName" placeholder="e.g. Kothadar HW → Sanosara Vill.">
+          </div>
+
+          <div class="form-row">
+            <div class="field-group">
+              <label>Start Chainage (m)</label>
+              <input type="number" id="newRouteStart" placeholder="e.g. 0" value="0">
             </div>
-            <div id="settingsMapPickArea">
-              <div class="pick-hint">👆 Tap a pipeline line on the map below to select it as a route</div>
-              <div id="settingsMapLeaflet" style="width:100%;height:280px;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;margin-bottom:8px"></div>
-              <div id="settingsMapHint" style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px">
-                Drag to pan · Pinch to zoom
-              </div>
+            <div class="field-group">
+              <label>Total Length (m) <span style="color:#FF453A">*</span></label>
+              <input type="number" id="newRouteLen" placeholder="e.g. 1200">
             </div>
           </div>
 
-          <!-- Selected line info (shown after tap) -->
-          <div id="pickedLineInfo" class="hidden picked-line-info">
-            <div style="font-size:22px">✅</div>
-            <div>
-              <div class="picked-line-name" id="pickedLineName">—</div>
-              <div class="picked-line-meta" id="pickedLineMeta">—</div>
-            </div>
+          <!-- Pipe Segments -->
+          <div class="field-group">
+            <label style="display:flex;justify-content:space-between;align-items:center">
+              <span>Pipe Segments <span style="color:var(--muted);font-size:10px">— size/material per chainage range</span></span>
+              <button type="button" onclick="addPipeSegmentRow()" style="background:rgba(10,132,255,0.15);border:1px dashed #0A84FF;border-radius:7px;padding:4px 10px;color:#0A84FF;font-size:11px;font-family:inherit;cursor:pointer">＋ Add</button>
+            </label>
+            <div id="pipeSegmentsList" style="margin-top:6px"></div>
           </div>
 
-          <!-- Route detail form (shown after tap) -->
-          <div id="routeDetailForm" class="hidden add-route-form">
-            <div class="field-group" style="margin-top:4px">
-              <label>Route Name <span style="color:var(--muted);font-size:11px">— edit if needed</span></label>
-              <input type="text" id="newRouteName" placeholder="e.g. Kothadar HW → Sanosara Vill.">
-            </div>
-            <div class="field-group">
-              <label>Total Length (m)</label>
-              <input type="number" id="newRouteLen" placeholder="Auto from KMZ">
-            </div>
-
-            <!-- Pipe Segments -->
-            <div class="field-group">
-              <label style="display:flex;justify-content:space-between;align-items:center">
-                <span>Pipe Segments <span style="color:var(--muted);font-size:10px">— different dia. for different chainage ranges</span></span>
-                <button type="button" onclick="addPipeSegmentRow()" style="background:rgba(10,132,255,0.15);border:1px dashed #0A84FF;border-radius:7px;padding:4px 10px;color:#0A84FF;font-size:11px;font-family:inherit;cursor:pointer">＋ Add</button>
-              </label>
-              <div id="pipeSegmentsList" style="margin-top:6px"></div>
-            </div>
-            <div class="field-group">
-              <label>Route Colour on Map</label>
-              <div class="color-picker-row" id="colorPicker"></div>
-              <input type="hidden" id="newRouteColor" value="#0A84FF">
-            </div>
-            <div class="submit-row" style="margin-top:12px">
-              <button class="btn-secondary" onclick="cancelPickMode()">Cancel</button>
-              <button class="btn-primary flex1" onclick="saveNewRoute()" style="margin-top:0">✓ Save Route</button>
-            </div>
+          <div class="field-group">
+            <label>Route Colour</label>
+            <div class="color-picker-row" id="colorPicker"></div>
+            <input type="hidden" id="newRouteColor" value="#0A84FF">
           </div>
 
+          <div class="submit-row" style="margin-top:4px">
+            <button class="btn-secondary" onclick="closeAddRouteForm()">Cancel</button>
+            <button class="btn-primary flex1" onclick="saveNewRoute()" style="margin-top:0">✓ Save Route</button>
+          </div>
         </div>
       </div>
     </div>
@@ -4514,14 +4474,53 @@ function doSaveReport(type, data) {
   const reports = getReports();
   if (_editingReportId) {
     const orig = reports.find(function(r){ return r.id === _editingReportId; });
-    // Check edit dependency: new range must still cover all dependents
-    if (orig && (orig.type === 'excavation' || orig.type === 'pipe')) {
-      var newFrom = data.from != null ? data.from : orig.from;
-      var newTo   = data.to   != null ? data.to   : orig.to;
-      var editDep = checkEditDependency(orig, newFrom, newTo);
-      if (editDep.blocked) {
-        showBlockedModal('Cannot Save Edit', editDep.reason);
-        return;
+    // Check edit dependency
+    if (orig) {
+      // Excavation/Pipe range shrink — check downstream range deps
+      if (orig.type === 'excavation' || orig.type === 'pipe') {
+        var newFrom = data.from != null ? data.from : orig.from;
+        var newTo   = data.to   != null ? data.to   : orig.to;
+        var editDep = checkEditDependency(orig, newFrom, newTo);
+        if (editDep.blocked) { showBlockedModal('Cannot Save Edit', editDep.reason); return; }
+      }
+      // Pipe range change — check point deps (valve/fitting/chamber/structure)
+      if (orig.type === 'pipe') {
+        var nFrom = data.from != null ? data.from : orig.from;
+        var nTo   = data.to   != null ? data.to   : orig.to;
+        var allR  = getReports();
+        var ptDeps = allR.filter(function(x){
+          if (String(x.id)===String(orig.id)) return false;
+          if (x.project!==orig.project || x.route!==orig.route) return false;
+          var ch = x.chainage != null ? x.chainage : null;
+          if (['valve','fitting','chamber','structure'].indexOf(x.type)<0 || ch==null) return false;
+          // was covered by old range but not new
+          return ch >= orig.from && ch <= orig.to && (ch < nFrom || ch > nTo);
+        });
+        if (ptDeps.length) {
+          showBlockedModal('Cannot Save Edit', 'Editing this Pipe Laying range would leave dependent records uncovered: '
+            + ptDeps.map(function(x){return x.type+' Ch:'+x.chainage+'m';}).join(', ')+'.');
+          return;
+        }
+      }
+      // Valve chainage change — block if chamber references it
+      if (orig.type === 'valve' && data.chainage !== orig.chainage) {
+        var chamDep = getReports().filter(function(x){
+          return x.type==='chamber' && String(x.valveRef)===String(orig.id);
+        });
+        if (chamDep.length) {
+          showBlockedModal('Cannot Save Edit', 'A Chamber record references this Valve at Ch:'+orig.chainage+'m. Delete the Chamber before changing the valve chainage.');
+          return;
+        }
+      }
+      // Fitting chainage change — block if concrete references it
+      if (orig.type === 'fitting' && data.chainage !== orig.chainage) {
+        var concrDep = getReports().filter(function(x){
+          return x.type==='structure' && String(x.pipeRef)===String(orig.id);
+        });
+        if (concrDep.length) {
+          showBlockedModal('Cannot Save Edit', 'A Concrete Work record references this Fitting Thrust Block. Delete the Concrete Work before changing the fitting chainage.');
+          return;
+        }
       }
     }
     const idx = reports.findIndex(function(r){ return r.id === _editingReportId; });
@@ -4560,17 +4559,55 @@ function doSaveReport(type, data) {
 // Returns { blocked: bool, reason: string, dependents: [] }
 function checkDeleteDependency(r) {
   var reports = getReports();
-  var depType = null, depLabel = '';
-  if (r.type === 'excavation') { depType = 'pipe';   depLabel = 'Pipe Laying'; }
-  if (r.type === 'pipe')       { depType = 'refill'; depLabel = 'Refilling'; }
-  if (!depType) return { blocked: false };
-  var deps = reports.filter(function(x) {
-    return x.project === r.project && x.route === r.route && x.type === depType
-      && String(x.id) !== String(r.id) && x.from < r.to && x.to > r.from;
-  });
-  if (!deps.length) return { blocked: false };
-  var ranges = deps.map(function(x){ return 'Ch:'+x.from+'-'+x.to+'m'; }).join(', ');
-  return { blocked: true, dependents: deps, reason: 'Cannot delete: ' + depLabel + ' records depend on this range: ' + ranges + '. Delete those ' + depLabel + ' records first.' };
+
+  // Excavation → pipe depends on it
+  if (r.type === 'excavation') {
+    var deps = reports.filter(function(x){
+      return x.project===r.project && x.route===r.route && x.type==='pipe'
+        && String(x.id)!==String(r.id) && x.from < r.to && x.to > r.from;
+    });
+    if (deps.length) return { blocked:true, reason:'Cannot delete: Pipe Laying records depend on this Excavation: '+deps.map(function(x){return 'Ch:'+x.from+'-'+x.to+'m';}).join(', ')+'. Delete Pipe Laying records first.' };
+  }
+
+  // Pipe laying → refilling, valves, fittings, chambers depend on it
+  if (r.type === 'pipe') {
+    var depTypes = [
+      { type:'refill',    label:'Refilling' },
+      { type:'valve',     label:'Valve' },
+      { type:'fitting',   label:'Fitting' },
+      { type:'chamber',   label:'Chamber' },
+      { type:'structure', label:'Concrete Work' }
+    ];
+    var found = [];
+    depTypes.forEach(function(dt) {
+      var d = reports.filter(function(x){
+        if (x.project!==r.project || x.route!==r.route || x.type!==dt.type) return false;
+        var ch = x.chainage != null ? x.chainage : x.from;
+        if (dt.type==='refill') return x.from < r.to && x.to > r.from;
+        return ch != null && ch >= r.from && ch <= r.to;
+      });
+      d.forEach(function(x){ found.push(dt.label+' Ch:'+(x.chainage||x.from)+'m'); });
+    });
+    if (found.length) return { blocked:true, reason:'Cannot delete this Pipe Laying. Dependent records exist: '+found.join(', ')+'. Delete those records first.' };
+  }
+
+  // Valve → chamber depends on it (via valveRef)
+  if (r.type === 'valve') {
+    var chamDeps = reports.filter(function(x){
+      return x.type==='chamber' && String(x.valveRef)===String(r.id);
+    });
+    if (chamDeps.length) return { blocked:true, reason:'Cannot delete this Valve. Chamber record(s) depend on it (Ch:'+(chamDeps[0].chainage||'?')+'m). Delete the Chamber first.' };
+  }
+
+  // Fitting with thrust block → concrete work depends on it
+  if (r.type === 'fitting' && r.thrustBlock === 'Yes') {
+    var concrDeps = reports.filter(function(x){
+      return x.type==='structure' && String(x.pipeRef)===String(r.id);
+    });
+    if (concrDeps.length) return { blocked:true, reason:'Cannot delete this Fitting. Concrete Work record(s) reference its Thrust Block. Delete the Concrete Work first.' };
+  }
+
+  return { blocked: false };
 }
 
 function checkEditDependency(r, newFrom, newTo) {
@@ -5523,86 +5560,112 @@ const MAP = {
   init() {}
 };
 function renderMapProjectTabs() {
-  const tabRow = document.getElementById('mapProjTabs');
+  var tabRow = document.getElementById('mapProjTabs');
   if (!tabRow) return;
-  const projects = getVisibleProjects();
+  var projects = getVisibleProjects();
   if (!projects.includes(_mapActiveProject)) _mapActiveProject = projects[0];
-  tabRow.innerHTML = projects.map(p =>
-    `<div class="proj-tab${p===_mapActiveProject?' active':''}" onclick="switchMapProject('${p}')" style="font-size:12px">${p}</div>`
-  ).join('');
+  tabRow.innerHTML = projects.map(function(p){
+    return '<div class="proj-tab'+(p===_mapActiveProject?' active':'')+'" onclick="switchMapProject(this.dataset.p)" data-p="'+p+'" style="font-size:12px">'+p+'</div>';
+  }).join('');
 }
 
 function initMap() {
   populateAllProjectDropdowns();
   renderMapProjectTabs();
-  _ensureMap();
-  setTimeout(() => {
-    if (_lmap) _lmap.invalidateSize();
-    const proj = _mapActiveProject || getProjects()[0];
-    _drawKmzLines(proj);
-    _drawAdminRoutes(proj);
-    _drawPins(proj);
-    _autoFitMap(proj);
-    refreshMapList();
-  }, 120);
+  renderChainageDiagram();
 }
 
 function switchMapProject(proj) {
   _mapActiveProject = proj;
   renderMapProjectTabs();
-  if (!_lmap) return;
-  _drawKmzLines(proj);
-  _drawAdminRoutes(proj);
-  _drawPins(proj);
-  _autoFitMap(proj);
-  refreshMapList();
+  renderChainageDiagram();
 }
 
-function refreshMapPins() {
-  if (_lmap) _drawPins(_mapActiveProject);
-}
+function refreshMapPins() { renderChainageDiagram(); }
+function refreshMapList() { renderChainageDiagram(); }
 
-function refreshMapList() {
-  const reports = getReports();
-  const visibleProjects = getVisibleProjects();
-  const visible = (currentRole === 'admin'
-    ? reports
-    : reports.filter(r => r.supervisor === currentUser))
-    .filter(r => visibleProjects.indexOf(r.project) >= 0);
-  const mapList = document.getElementById('mapList');
-  const withGPS = visible.filter(r => r.lat && r.lon);
-  if (withGPS.length === 0) {
-    mapList.innerHTML = `<div class="empty-state"><div class="es-icon">🗺️</div><p>No GPS data yet. Tap 📍 when submitting a report.</p></div>`;
-  } else {
-    mapList.innerHTML = withGPS.slice().reverse().map(r => reportListItem(r)).join('');
-  }
-  // Also refresh chainage panel
-  _renderChainagePanel(visible);
-}
+function renderChainageDiagram() {
+  var el = document.getElementById('chainageDiagram');
+  if (!el) return;
+  var proj = _mapActiveProject || getVisibleProjects()[0];
+  if (!proj) { el.innerHTML = '<div class="empty-state"><div class="es-icon">📊</div><p>No projects yet.</p></div>'; return; }
+  var routes = getAdminRoutes()[proj] || [];
+  if (!routes.length) { el.innerHTML = '<div class="empty-state"><div class="es-icon">🛣️</div><p>No routes for this project. Add routes in Settings.</p></div>'; return; }
+  var reports = getReports().filter(function(r){ return r.project === proj; });
+  if (currentRole === 'supervisor') reports = reports.filter(function(r){ return r.supervisor === currentUser; });
 
-// ---- Point-to-segment distance (for tap hit-testing) ----
-function pointToSegDist(px,py,ax,ay,bx,by) {
-  const dx=bx-ax, dy=by-ay;
-  const lenSq=dx*dx+dy*dy;
-  if (lenSq===0) return Math.hypot(px-ax,py-ay);
-  let t=((px-ax)*dx+(py-ay)*dy)/lenSq;
-  t=Math.max(0,Math.min(1,t));
-  return Math.hypot(px-(ax+t*dx), py-(ay+t*dy));
-}
+  el.innerHTML = routes.map(function(route) {
+    var reps     = reports.filter(function(r){ return r.route === route.name || r.route === route.id; });
+    var start    = route.startCh || 0;
+    var len      = route.length  || 1000;
+    var end      = start + len;
+    var excSegs  = reps.filter(function(r){ return r.type==='excavation'; });
+    var pipeSegs = reps.filter(function(r){ return r.type==='pipe'; });
+    var refSegs  = reps.filter(function(r){ return r.type==='refill'; });
+    var valves   = reps.filter(function(r){ return r.type==='valve'; });
+    var chambers = reps.filter(function(r){ return r.type==='chamber'; });
+    var fittings = reps.filter(function(r){ return r.type==='fitting'; });
+    var concrete = reps.filter(function(r){ return r.type==='structure'; });
 
-// ---- Route popup ----
-let _popupRoute = null;
-let _popupProject = null;
+    function pct(ch) { return Math.min(100, Math.max(0, (ch - start) / len * 100)).toFixed(2); }
+    function segBar(segs, color, label) {
+      return segs.map(function(r){
+        var f = r.from != null ? r.from : start;
+        var t = r.to   != null ? r.to   : f;
+        var l = pct(f), w = Math.max(0.5, pct(t) - pct(f));
+        return '<div title="'+label+' Ch:'+f+'-'+t+'m" style="position:absolute;left:'+l+'%;width:'+w+'%;height:100%;background:'+color+'"></div>';
+      }).join('');
+    }
+    function pinBar(pts, icon) {
+      return pts.map(function(r){
+        var ch = r.chainage != null ? r.chainage : r.from;
+        if (ch == null) return '';
+        return '<div title="'+icon+' Ch:'+ch+'m" style="position:absolute;left:calc('+pct(ch)+'% - 8px);top:-1px;font-size:13px">'+icon+'</div>';
+      }).join('');
+    }
+    var planBands = (route.segments||[]).map(function(s){
+      if (s.from==null||s.to==null) return '';
+      var l=pct(s.from), w=Math.max(0.5,pct(s.to)-pct(s.from));
+      return '<div title="Planned: '+(s.size||'')+' '+(s.material||'')+'" style="position:absolute;left:'+l+'%;width:'+w+'%;height:100%;border-left:1px dashed rgba(255,255,255,0.15)"></div>';
+    }).join('');
+    var excPct  = Math.min(100,Math.round(excSegs.reduce(function(a,r){return a+(r.meters||0);},0)/len*100));
+    var pipePct = Math.min(100,Math.round(pipeSegs.reduce(function(a,r){return a+(r.meters||0);},0)/len*100));
+    var refPct  = Math.min(100,Math.round(refSegs.reduce(function(a,r){return a+(r.meters||0);},0)/len*100));
+    var ticks = [0,0.25,0.5,0.75,1].map(function(f){ return '<span>'+(Math.round(start+len*f))+'m</span>'; }).join('');
 
-function showRoutePopup(name, route, meta, project) {
-  _popupRoute  = route;
-  _popupProject = project;
-  const colorDot = route ? `<span class="popup-route-color" style="background:${route.color||'#0A84FF'}"></span>` : '';
-  document.getElementById('popupTitle').innerHTML = colorDot + name;
-  document.getElementById('popupMeta').textContent = meta;
-  // Only show "Submit Report" for supervisors
-  document.querySelector('.popup-btn-report').style.display = currentRole==='supervisor' ? '' : 'none';
-  document.getElementById('routePopup').classList.add('show');
+    function bar(segs, color, icon, pctVal) {
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+        +'<div style="width:22px;text-align:center;font-size:13px;flex-shrink:0">'+icon+'</div>'
+        +'<div style="flex:1;height:14px;background:rgba(255,255,255,0.05);border-radius:4px;position:relative;overflow:hidden">'
+        +planBands+segBar(segs,color,icon)
+        +'</div>'
+        +'<div style="width:32px;font-size:10px;color:'+color+';font-weight:600;flex-shrink:0">'+pctVal+'%</div>'
+        +'</div>';
+    }
+
+    return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">'
+      +'<div><div style="font-size:14px;font-weight:700;color:var(--text)">'+route.name+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);margin-top:2px">Ch:'+start+'m – '+end+'m · '+len+'m</div></div>'
+      +'<div style="background:rgba(10,132,255,0.12);border:1px solid rgba(10,132,255,0.3);border-radius:8px;padding:4px 10px;text-align:center">'
+      +'<div style="font-size:16px;font-weight:800;color:#0A84FF;line-height:1">'+pipePct+'%</div>'
+      +'<div style="font-size:9px;color:var(--muted)">pipe</div></div>'
+      +'</div>'
+      +bar(excSegs,'#FF9F0A','⛏️',excPct)
+      +bar(pipeSegs,'#0A84FF','🔩',pipePct)
+      +bar(refSegs,'#30D158','🪣',refPct)
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+      +'<div style="width:22px;flex-shrink:0"></div>'
+      +'<div style="flex:1;height:22px;position:relative">'+pinBar(valves,'🔧')+pinBar(chambers,'🏛️')+pinBar(fittings,'🔗')+pinBar(concrete,'🏗️')+'</div>'
+      +'<div style="width:32px"></div></div>'
+      +'<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;padding:0 30px 0 30px;margin-bottom:10px">'+ticks+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:8px;border-top:1px solid var(--border)">'
+      +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,69,58,0.25);color:#FF453A;background:rgba(255,69,58,0.08)">🔧 '+valves.length+'</span>'
+      +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,149,0,0.25);color:#FF9500;background:rgba(255,149,0,0.08)">🏛️ '+chambers.length+'</span>'
+      +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(90,200,250,0.25);color:#5AC8FA;background:rgba(90,200,250,0.08)">🔗 '+fittings.length+'</span>'
+      +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(191,90,242,0.25);color:#BF5AF2;background:rgba(191,90,242,0.08)">🏗️ '+concrete.length+'</span>'
+      +'</div></div>';
+  }).join('');
 }
 
 function closeRoutePopup() {
@@ -7528,10 +7591,10 @@ function renderRouteAdmin() {
       <div class="route-admin-color" style="background:${r.color}"></div>
       <div class="route-admin-info">
         <div class="route-admin-name">${r.name}</div>
-        <div class="route-admin-meta">${(r.length/1000).toFixed(2)} km · ${
+        <div class="route-admin-meta">Ch:${r.startCh||0}m · ${(r.length/1000).toFixed(2)}km · ${
           r.segments && r.segments.length
             ? r.segments.map(function(s){ return (s.from!=null&&s.to!=null?s.from+'-'+s.to+'m: ':'')+(s.size||'')+(s.material?' '+s.material:''); }).join(' | ')
-            : (r.pipe || '—')
+            : (r.pipe || 'No pipe specs')
         }</div>
       </div>
       <button class="route-admin-del" onclick="deleteRoute(${i})" title="Delete">🗑️</button>
@@ -7634,27 +7697,27 @@ const SMAP = {
   draw() { this.drawKmz(); }  // called after saving a route to refresh
 };
 
-function startPickMode() {
+function openAddRouteForm() {
   document.getElementById('addRoutePanel').classList.remove('hidden');
   document.getElementById('addRouteBtn').style.display = 'none';
-  document.getElementById('pickedLineInfo').classList.add('hidden');
-  document.getElementById('routeDetailForm').classList.add('hidden');
-
-  const hasKmz = !!localStorage.getItem('aquatrack_kmz_geo_' + settingsActiveProject);
-  document.getElementById('settingsMapNoKmz').classList.toggle('hidden', hasKmz);
-  document.getElementById('settingsMapPickArea').classList.toggle('hidden', !hasKmz);
-
+  var segList = document.getElementById('pipeSegmentsList');
+  if (segList) segList.innerHTML = '';
+  document.getElementById('newRouteName').value = '';
+  document.getElementById('newRouteLen').value  = '';
+  var startEl = document.getElementById('newRouteStart');
+  if (startEl) startEl.value = '0';
   renderColorPicker();
-
-  // Init Leaflet map (needs tick for DOM)
-  setTimeout(() => { SMAP.pickedLine = null; SMAP.init(); }, 80);
 }
 
-function cancelPickMode() {
+function closeAddRouteForm() {
   document.getElementById('addRoutePanel').classList.add('hidden');
   document.getElementById('addRouteBtn').style.display = '';
-  SMAP.pickedLine = null; if (SMAP.map) { SMAP.map.remove(); SMAP.map = null; }
 }
+
+// Keep legacy aliases so nothing breaks
+function startPickMode()  { openAddRouteForm(); }
+function cancelPickMode() { closeAddRouteForm(); }
+
 
 function onLinePicked(line, idx) {
   // Calculate geodesic length of the line in metres
@@ -7743,16 +7806,13 @@ function saveNewRoute() {
 
   const routes = getAdminRoutes();
   if (!routes[settingsActiveProject]) routes[settingsActiveProject] = [];
-  const newRoute = { id:'R'+Date.now(), name, length:len, pipe, segments, color };
-  if (SMAP.pickedLine) {
-    newRoute.kmzName    = SMAP.pickedLine.name;
-    newRoute.kmzLineIdx = SMAP.pickedLine.kmzLineIdx;
-  }
+  var startCh = parseInt(document.getElementById('newRouteStart')?.value) || 0;
+  const newRoute = { id:'R'+Date.now(), name, length:len, startCh, pipe, segments, color };
   routes[settingsActiveProject].push(newRoute);
   saveAdminRoutes(routes);
   renderRouteAdmin();
-  cancelPickMode();
-  SMAP.draw();
+  closeAddRouteForm();
+  renderChainageDiagram();
   showToast('✅ Route saved');
 }
 
