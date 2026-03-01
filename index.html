@@ -6410,13 +6410,14 @@ function renderSupervisorAccounts() {
   window._supShare  = [];
   window._supEdit   = [];
   supervisors.forEach(function(username) {
-    window._supCopy.push(function()   { docopySyncCode(username);    });
+    const userRec = users[username];
+    window._supCopy.push(function()   { docopySyncCode(username); });
     window._supDelete.push(function() { dodeleteSupervisor(username); });
-    window._supEdit.push((function(u) { return function() { showEditSupervisorModal(u); }; })(username));
-    window._supShare.push((function(u, rec) { return function() {
-      var msg = '👷 Pipeline Work Login%0AUsername: ' + u + '%0APassword: ' + rec.pass + '%0A%0AOpen app and sign in with these credentials.';
+    window._supEdit.push(function()   { showEditSupervisorModal(username); });
+    window._supShare.push((function(uname, rec) { return function() {
+      var msg = '👷 Pipeline Work Login%0AUsername: ' + uname + '%0APassword: ' + rec.pass + '%0A%0AOpen app and sign in with these credentials.';
       window.open('https://wa.me/?text=' + msg, '_blank');
-    }; })(username, u));
+    }; })(username, userRec));
   });
 
   const allProjects = getProjects();
