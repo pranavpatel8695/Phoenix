@@ -447,7 +447,11 @@
   .dcc-lbl   { font-size:9px; color:var(--muted); margin-top:2px; }
 
   /* ── Progress bars ── */
-  .progress-item { margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+  /* Chainage hover */
+  .ch-hover-track { touch-action: none; }
+  .ch-cursor-line { transition: left 0.05s linear; }
+
+    .progress-item { margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border); }
   .progress-item:last-child { margin-bottom:0; padding-bottom:0; border-bottom:none; }
   .progress-header { display:flex; justify-content:space-between; font-size:12px; margin-bottom:8px; align-items:center; }
   .progress-bar { height:7px; background:var(--surface2); border-radius:6px; overflow:hidden; margin-bottom:2px; }
@@ -1312,7 +1316,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
   <div class="nav-tabs" id="navTabs">
     <div class="nav-tab active" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="tab-icon">📊</span>Dashboard</div>
     <div class="nav-tab supervisor-only" data-tab="submit" onclick="switchTab('submit')"><span class="tab-icon">📝</span>Submit Report</div>
-    <div class="nav-tab" data-tab="map" onclick="switchTab('map')"><span class="tab-icon">🗺️</span>Map View</div>
+    <div class="nav-tab" data-tab="map" onclick="switchTab('map')"><span class="tab-icon">📏</span>Chainage View</div>
     <div class="nav-tab" data-tab="reports" onclick="switchTab('reports')"><span class="tab-icon">📋</span>All Reports</div>
     <div class="nav-tab admin-only" data-tab="tracker" onclick="switchTab('tracker')"><span class="tab-icon">📏</span>Tracker</div>
     <div class="nav-tab admin-only" data-tab="settings" onclick="switchTab('settings')"><span class="tab-icon">⚙️</span>Projects</div>
@@ -2232,8 +2236,8 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
 
     <!-- ===== MAP TAB ===== -->
     <div id="tab-map" class="hidden">
-      <div class="section-header">Progress Diagram</div>
-      <p class="section-sub">Chainage-based work progress · All routes · All form types</p>
+      <div class="section-header">Chainage View</div>
+      <p class="section-sub">Route progress by chainage · Hover/tap bar to read exact chainage</p>
 
       <!-- Project tabs -->
       <div class="project-tab-row" id="mapProjTabs" style="margin-bottom:12px"></div>
@@ -5584,6 +5588,35 @@ function switchMapProject(proj) {
 function refreshMapPins() { renderChainageDiagram(); }
 function refreshMapList() { renderChainageDiagram(); }
 
+function _chHover(e, track) {
+  var rect  = track.getBoundingClientRect();
+  var xPct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  var start = parseFloat(track.dataset.start) || 0;
+  var len   = parseFloat(track.dataset.len)   || 1000;
+  var ch    = Math.round(start + xPct * len);
+  var card  = track.closest('[style*="position:relative"]');
+  if (!card) return;
+  var line  = card.querySelector('.ch-cursor-line');
+  var lbl   = card.querySelector('.ch-cursor-label');
+  if (!line || !lbl) return;
+  // Position line relative to card — track left offset
+  var cardRect = card.getBoundingClientRect();
+  var leftPx   = e.clientX - cardRect.left;
+  line.style.display = 'block';
+  line.style.left    = leftPx + 'px';
+  lbl.textContent    = 'Ch: ' + ch + 'm';
+}
+
+function _chTouch(e, track) {
+  if (!e.touches.length) return;
+  e.preventDefault();
+  _chHover(e.touches[0], track);
+}
+
+function _chLeave() {
+  document.querySelectorAll('.ch-cursor-line').forEach(function(l){ l.style.display = 'none'; });
+}
+
 function renderChainageDiagram() {
   var el = document.getElementById('chainageDiagram');
   if (!el) return;
@@ -5643,7 +5676,7 @@ function renderChainageDiagram() {
         +'</div>';
     }
 
-    return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">'
+    return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px;position:relative">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">'
       +'<div><div style="font-size:14px;font-weight:700;color:var(--text)">'+route.name+'</div>'
       +'<div style="font-size:10px;color:var(--muted);margin-top:2px">Ch:'+start+'m – '+end+'m · '+len+'m</div></div>'
@@ -5658,7 +5691,16 @@ function renderChainageDiagram() {
       +'<div style="width:22px;flex-shrink:0"></div>'
       +'<div style="flex:1;height:22px;position:relative">'+pinBar(valves,'🔧')+pinBar(chambers,'🏛️')+pinBar(fittings,'🔗')+pinBar(concrete,'🏗️')+'</div>'
       +'<div style="width:32px"></div></div>'
-      +'<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;padding:0 30px 0 30px;margin-bottom:10px">'+ticks+'</div>'
+      +'<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;padding:0 30px 0 30px;margin-bottom:4px">'+ticks+'</div>'
+      // Hover track — invisible overlay over all bars for chainage tooltip
+      +'<div class="ch-hover-track" data-start="'+start+'" data-len="'+len+'" '
+      +'onmousemove="_chHover(event,this)" onmouseleave="_chLeave()" '
+      +'ontouchmove="_chTouch(event,this)" ontouchend="_chLeave()" '
+      +'style="position:absolute;left:30px;right:38px;top:0;bottom:48px;cursor:crosshair;z-index:10"></div>'
+      // Chainage cursor line (hidden by default)
+      +'<div class="ch-cursor-line" style="display:none;position:absolute;top:0;bottom:48px;width:1px;background:rgba(255,255,255,0.6);pointer-events:none;z-index:11">'
+      +'<div class="ch-cursor-label" style="position:absolute;top:-18px;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;white-space:nowrap;border:1px solid rgba(255,255,255,0.2)"></div>'
+      +'</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:8px;border-top:1px solid var(--border)">'
       +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,69,58,0.25);color:#FF453A;background:rgba(255,69,58,0.08)">🔧 '+valves.length+'</span>'
       +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,149,0,0.25);color:#FF9500;background:rgba(255,149,0,0.08)">🏛️ '+chambers.length+'</span>'
