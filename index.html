@@ -1960,8 +1960,8 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           </div>
         </div>
 
-        <!-- Chamber Status -->
-        <div class="field-group">
+        <!-- Chamber Status (all roles) -->
+        <div class="field-group" id="cham-status-wrap">
           <label>Chamber Status <span style="color:#FF453A">*</span></label>
           <div class="radio-group" style="gap:6px;margin-top:4px">
             <div class="radio-opt" onclick="selectRadio(this,'cham-status','Complete')" style="flex:1;text-align:center;font-size:12px">✅ Complete</div>
@@ -2894,13 +2894,12 @@ async function _doLoginSuccess(user) {
   const users = getUsers();
   currentUser = user;
   currentRole = users[user].role;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
   if (currentRole === 'admin') {
     syncUserProjects();
     setTimeout(function() { fbInit().then(function(ok){ if(ok) fbPushAdminData(); }); }, 2000);
   } else {
-    // Show loading while fetching routes/projects from Firebase
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
     showToast('⏳ Loading your data…');
     await syncSupervisorProjects(user);
     populateAllProjectDropdowns();
@@ -6198,16 +6197,15 @@ async function syncSupervisorProjects(username) {
       const doc = await _db.collection('_config').doc('adminData').get();
       if (doc.exists) {
         const d = doc.data();
-        // Sync projects
+        // Sync projects — admin list is source of truth
         if (d.projects && d.projects.length) {
-          const existing = JSON.parse(localStorage.getItem('aquatrack_projects')||'[]');
-          const merged = existing.slice();
-          d.projects.forEach(function(p){ if (!merged.includes(p)) merged.push(p); });
-          localStorage.setItem('aquatrack_projects', JSON.stringify(merged));
+          localStorage.setItem('aquatrack_projects', JSON.stringify(d.projects));
         }
         // Sync routes — admin is source of truth
         if (d.routes) {
-          localStorage.setItem('aquatrack_routes', JSON.stringify(d.routes));
+          // d.routes from Firestore is already an object — store as JSON string
+          const routesVal = (typeof d.routes === 'string') ? d.routes : JSON.stringify(d.routes);
+          localStorage.setItem('aquatrack_routes', routesVal);
         }
         // Sync user's assigned projects
         if (d.assignments) {
@@ -6224,12 +6222,13 @@ async function syncSupervisorProjects(username) {
         }
         populateAllProjectDropdowns();
         showToast('✅ Routes & projects loaded');
-        // Redraw map with synced routes
-        if (typeof switchMapProject === 'function' && typeof _mapActiveProject !== 'undefined') {
-          switchMapProject(_mapActiveProject || getVisibleProjects()[0]);
-        }
-        renderMapProjectTabs();
+        if (typeof renderMapProjectTabs === 'function') renderMapProjectTabs();
         if (typeof updateDashboard === 'function') updateDashboard();
+        // Redraw map after short delay to ensure Leaflet is ready
+        setTimeout(function() {
+          const proj = (typeof _mapActiveProject !== 'undefined' && _mapActiveProject) || (getVisibleProjects()[0]);
+          if (proj && typeof switchMapProject === 'function') switchMapProject(proj);
+        }, 800);
       }
     } catch(e) { console.warn('Supervisor sync failed:', e); }
   }
