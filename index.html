@@ -2391,11 +2391,27 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
     <div id="tab-reports" class="hidden">
       <div class="section-header">All Reports</div>
       <p class="section-sub">Complete log of submitted field reports</p>
-      <div class="card">
+      <div class="card" style="padding-bottom:8px">
+        <!-- Filters -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <select id="reportsProjectFilter" onchange="renderAllReports()" style="flex:1;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;font-weight:600;padding:8px 10px;font-family:inherit">
+            <option value="">— Select Project —</option>
+          </select>
+          <select id="reportsTypeFilter" onchange="renderAllReports()" style="flex:1;min-width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:8px 10px;font-family:inherit">
+            <option value="">All Types</option>
+            <option value="excavation">Excavation</option>
+            <option value="pipe">Pipe Laying</option>
+            <option value="refill">Refilling</option>
+            <option value="valve">Valves</option>
+            <option value="chamber">Chamber</option>
+            <option value="structure">Concrete Work</option>
+            <option value="fitting">Fittings</option>
+          </select>
+        </div>
         <div id="allReportsList">
           <div class="empty-state">
             <div class="es-icon">📋</div>
-            <p>No reports yet.</p>
+            <p>Select a project to view reports.</p>
           </div>
         </div>
       </div>
@@ -3030,6 +3046,7 @@ function initApp() {
 
   updateDashboard();
   populateAllProjectDropdowns();
+  populateReportsProjectDropdown();
   setTodayDate();
   updateConnStatus();
 }
@@ -4791,16 +4808,41 @@ function deleteReport(id) {
   );
 }
 
+function populateReportsProjectDropdown() {
+  const sel = document.getElementById('reportsProjectFilter');
+  if (!sel) return;
+  const projects = getVisibleProjects();
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Select Project —</option>'
+    + projects.map(function(p){ return '<option value="'+p+'"'+(p===current?' selected':'')+'>'+p+'</option>'; }).join('');
+}
+
 function renderAllReports() {
   const container = document.getElementById('allReportsList');
   if (!container) return;
-  const reports = getReports().slice().reverse();
-  if (reports.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><p>No reports yet.</p></div>';
-  } else {
-    container.innerHTML = reports.map(function(r) { return reportListItem(r); }).join('');
+
+  populateReportsProjectDropdown();
+
+  const selProj = document.getElementById('reportsProjectFilter');
+  const selType = document.getElementById('reportsTypeFilter');
+  const proj = selProj ? selProj.value : '';
+  const type = selType ? selType.value : '';
+
+  if (!proj) {
+    container.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><p>Select a project to view reports.</p></div>';
+    return;
   }
 
+  let reports = getReports().filter(function(r){ return r.project === proj; });
+  if (type) reports = reports.filter(function(r){ return r.type === type; });
+  reports = reports.slice().reverse();
+
+  if (reports.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><p>No reports found.</p></div>';
+  } else {
+    container.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+reports.length+' report(s)</div>'
+      + reports.map(function(r){ return reportListItem(r); }).join('');
+  }
 }
 
 // ========== CANVAS MAP ==========
