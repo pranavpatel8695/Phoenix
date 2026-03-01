@@ -2148,14 +2148,30 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
               <input type="hidden" id="str-est-conc" value="">
             </div>
 
+            <!-- Chainage From / To → auto-calc Length -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+              <div>
+                <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Chainage From (m)</div>
+                <input type="number" id="str-from" placeholder="e.g. 450" step="1"
+                  oninput="autoCalcStrLength()"
+                  style="width:100%;padding:7px 8px;border-radius:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Chainage To (m)</div>
+                <input type="number" id="str-to" placeholder="e.g. 480" step="1"
+                  oninput="autoCalcStrLength()"
+                  style="width:100%;padding:7px 8px;border-radius:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box">
+              </div>
+            </div>
+
             <!-- Trench Dimensions -->
             <div style="font-size:11px;color:#BF5AF2;font-weight:600;margin-bottom:6px">📐 Trench Dimensions</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
               <div>
-                <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Length / L (m)</div>
-                <input type="number" id="str-length" placeholder="e.g. 30" step="0.001" min="0"
+                <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Length / L (m) <span style="color:#30D158;font-size:9px">auto</span></div>
+                <input type="number" id="str-length" placeholder="Auto from chainage" step="0.001" min="0"
                   oninput="calcActualConcreteVol()"
-                  style="width:100%;padding:7px 8px;border-radius:7px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box">
+                  style="width:100%;padding:7px 8px;border-radius:7px;background:var(--surface2);border:1px solid rgba(48,209,88,0.4);color:#30D158;font-weight:600;font-family:inherit;font-size:13px;box-sizing:border-box">
               </div>
               <div>
                 <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Width / B (m)</div>
@@ -3050,7 +3066,7 @@ function setTodayDate() {
   const today = new Date().toISOString().split('T')[0];
   ['exc-date','pipe-date','ref-date','val-date','str-date','cham-date','fit-date'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = today;
+    if (el) { el.value = today; el.max = today; }
   });
 }
 
@@ -3352,6 +3368,8 @@ function _doEditReport(id) {
       }
     } else if (r.type === 'structure') {
       set('str-type', r.strType); set('str-chainage', r.chainage);
+      set('str-from', r.from||''); set('str-to', r.to||'');
+      setTimeout(autoCalcStrLength, 50);
       set('str-pipe-ref', r.pipeRef||'');
       // Restore actual/est concrete dimensions
       set('str-length',    r.strLength  || '');
@@ -3632,6 +3650,18 @@ function selectEncasingForConcrete(el) {
     (estConc ? '  ·  🧮 Est. ' + estConc + ' m³' : '') +
     '  ·  ' + (el.dataset.date || '');
   infoEl.style.display = '';
+}
+
+function autoCalcStrLength() {
+  var from = parseFloat(document.getElementById('str-from').value);
+  var to   = parseFloat(document.getElementById('str-to').value);
+  var lenEl = document.getElementById('str-length');
+  if (!isNaN(from) && !isNaN(to) && to > from) {
+    lenEl.value = parseFloat((to - from).toFixed(3));
+  } else {
+    lenEl.value = '';
+  }
+  calcActualConcreteVol();
 }
 
 function calcActualConcreteVol() {
@@ -3942,9 +3972,9 @@ function addEncasingEntry(type, prefill) {
     <!-- Trench Dimensions -->
     <div style="font-size:11px;color:${color};font-weight:600;margin-bottom:6px">📐 Trench Dimensions</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-      <div>${lbl('Length (m)')}
-        <input type="number" class="enc-length" placeholder="Auto from Ch." step="0.001" style="${iStyle}"
-          value="${prefill?.length ?? ''}" oninput="calcEncasingVolumes(this.closest('.encasing-entry'))">
+      <div>${lbl('Length / L (m)')}
+        <input type="number" class="enc-length" placeholder="Auto" step="0.001" readonly
+          style="${roStyle}" value="${prefill?.length ?? ''}">
       </div>
       <div>${lbl('Width / B (m)')}
         <input type="number" class="enc-width" placeholder="e.g. 0.9" step="0.001" min="0" style="${iStyle}"
@@ -4219,6 +4249,10 @@ function submitReport(type) {
     data.encasing     = firstEnc ? firstEnc.type : 'Not Required';
     data.encasingFrom = firstEnc ? firstEnc.from : null;
     data.encasingTo   = firstEnc ? firstEnc.to   : null;
+    // Pipe laying encasing volumes are ALWAYS estimated (actual comes from Concrete Work form)
+    const totalEncEst = data.encasings.reduce(function(s,e){ return s + (e.volConc||0); }, 0);
+    data.estConc   = totalEncEst > 0 ? parseFloat(totalEncEst.toFixed(4)) : null;
+    data.actualConc = null; // never set actual from pipe form
     data.remarks     = document.getElementById('pipe-remarks').value;
     data.photosStart = collectPhotosFromPreview('pipe-photo-prev-start');
     data.photosEnd   = collectPhotosFromPreview('pipe-photo-prev-end');
@@ -4271,7 +4305,9 @@ function submitReport(type) {
 
       // CC/RCC Encasing check — at least one entry must exist
       const encasingList = document.getElementById('encasing-entries-list');
-      const hasEncasing  = encasingList && encasingList.querySelectorAll('.encasing-entry').length > 0;
+      const hasEncasingEntry  = encasingList && encasingList.querySelectorAll('.encasing-entry').length > 0;
+      const hasNotRequired    = encasingList && encasingList.innerHTML.includes('Not Required');
+      const hasEncasing = hasEncasingEntry || hasNotRequired;
       if (!hasEncasing) {
         encasingList.style.outline = '2px solid #FF453A';
         encasingList.style.borderRadius = '8px';
@@ -4419,6 +4455,8 @@ function submitReport(type) {
     data.date      = document.getElementById('str-date').value;
     data.strType   = document.getElementById('str-type').value;
     data.chainage  = parseFloat(document.getElementById('str-chainage').value) || null;
+    data.from      = parseFloat(document.getElementById('str-from').value)  || null;
+    data.to        = parseFloat(document.getElementById('str-to').value)    || null;
     data.pipeRef      = document.getElementById('str-pipe-ref').value;
     data.workStatus   = document.getElementById('str-work-status').value || 'In Progress';
     data.estConc   = parseFloat(document.getElementById('str-est-conc').value)    || null;
@@ -4450,6 +4488,15 @@ function submitReport(type) {
     const fitPrevs = document.querySelectorAll('#fit-photo-prev img');
     if (fitPrevs.length) data.photos = Array.from(fitPrevs).map(i => i.src);
     if (!data.chainage) { showToast('⚠️ Enter chainage'); return; }
+  }
+
+  // Future date check
+  if (data.date) {
+    const today = new Date().toISOString().split('T')[0];
+    if (data.date > today) {
+      showToast('⚠️ Cannot submit report for a future date');
+      return;
+    }
   }
 
   // Dependency check
