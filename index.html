@@ -1751,8 +1751,22 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           </div>
         </div>
         <div class="field-group">
-          <label>Volume (cum)</label>
-          <input type="number" id="ref-volume" placeholder="Auto-calculated" readonly style="opacity:0.7;color:#30D158;font-weight:700">
+          <label>Pipe Dia (mm) <span style="color:var(--muted);font-size:11px">for net qty calculation</span></label>
+          <input type="number" id="ref-pipedia" placeholder="e.g. 200" oninput="calcRefVolume()">
+        </div>
+        <div class="form-row">
+          <div class="field-group">
+            <label>Gross Volume (cum)</label>
+            <input type="number" id="ref-volume" placeholder="Auto-calculated" readonly style="opacity:0.7;color:#30D158;font-weight:700">
+          </div>
+          <div class="field-group">
+            <label>Volume of Pipe (cum)</label>
+            <input type="number" id="ref-pipevol" placeholder="Auto-calculated" readonly style="opacity:0.7;color:#0A84FF;font-weight:700">
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Net Refilling Qty (cum)</label>
+          <input type="number" id="ref-netvol" placeholder="Gross − Pipe volume" readonly style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.3);color:#30D158;font-weight:700">
         </div>
         <div class="field-group">
           <label>Road Restoration Status <span style="color:#FF453A">*</span></label>
@@ -2905,12 +2919,14 @@ async function _doLoginSuccess(user) {
     populateAllProjectDropdowns();
   }
   initApp();
-  // After initApp, re-trigger map route draw with delay (map may still be initializing)
+  // Re-trigger map after login for supervisor (Firebase data may arrive late)
   if (currentRole === 'supervisor') {
-    setTimeout(function() {
-      const proj = getVisibleProjects()[0];
-      if (proj && typeof switchMapProject === 'function') switchMapProject(proj);
-    }, 1500);
+    [1000, 3000].forEach(function(ms) {
+      setTimeout(function() {
+        const proj = (typeof _mapActiveProject !== 'undefined' && _mapActiveProject) || getVisibleProjects()[0];
+        if (proj && typeof switchMapProject === 'function') switchMapProject(proj);
+      }, ms);
+    });
   }
 }
 
@@ -2983,27 +2999,16 @@ function selectForm(type) {
 }
 
 function cancelForm() {
-  // Reset ALL form section fields completely
+  // Clear inputs WITHOUT triggering onchange (avoid re-activating forms)
   document.querySelectorAll('.form-section').forEach(function(form) {
-    // Clear text, number, date, hidden inputs
-    form.querySelectorAll('input:not([type="file"])').forEach(function(el) {
-      if (el.type === 'checkbox' || el.type === 'radio') { el.checked = false; }
-      else { el.value = ''; }
+    form.querySelectorAll('input:not([type="file"]):not([type="hidden"])').forEach(function(el) {
+      el.value = '';
     });
-    // Reset selects to first option
-    form.querySelectorAll('select').forEach(function(el) { el.selectedIndex = 0; });
-    // Clear textareas
+    form.querySelectorAll('input[type="hidden"]').forEach(function(el) { el.value = ''; });
     form.querySelectorAll('textarea').forEach(function(el) { el.value = ''; });
-    // Clear photo previews
     form.querySelectorAll('.photo-previews').forEach(function(el) { el.innerHTML = ''; });
-    // Clear file inputs
     form.querySelectorAll('input[type="file"]').forEach(function(el) { try { el.value = ''; } catch(e){} });
-    // Remove radio selected state
     form.querySelectorAll('.radio-opt').forEach(function(el) { el.classList.remove('selected'); });
-    // Hide conditional sections
-    form.querySelectorAll('[id$="-wrap"]').forEach(function(el) {
-      if (el.dataset.conditional) el.style.display = 'none';
-    });
   });
 
   // Specific resets
@@ -3013,17 +3018,22 @@ function cancelForm() {
   try { document.getElementById('fit-type-other').style.display = 'none'; } catch(e){}
   try { document.getElementById('precast-kept-wrap').style.display = 'none'; } catch(e){}
   try { document.getElementById('str-est-conc-display').textContent = '—'; } catch(e){}
-  try { document.getElementById('str-conc-diff').innerHTML = ''; document.getElementById('str-conc-diff').style.display = 'none'; } catch(e){}
-  // Clear meters badges
+  try { var d=document.getElementById('str-conc-diff'); d.innerHTML=''; d.style.display='none'; } catch(e){}
   ['exc','pipe','ref'].forEach(function(p) {
     var b = document.getElementById(p+'-meters-badge');
     if (b) { b.textContent=''; b.style.display='none'; }
   });
+  try { document.getElementById('ref-volume').value=''; } catch(e){}
 
   _editingReportId = null;
   document.querySelectorAll('.btn-primary.flex1[data-editing]').forEach(function(b) { b.textContent = 'Submit Report ✓'; delete b.dataset.editing; });
   document.querySelectorAll('.report-btn').forEach(function(b) { b.classList.remove('selected'); });
-  document.querySelectorAll('.form-section').forEach(function(f) { f.classList.remove('active'); f.style.display = 'none'; });
+  // Hide ALL forms - do this last and forcefully
+  document.querySelectorAll('.form-section').forEach(function(f) {
+    f.classList.remove('active');
+    f.classList.remove('hidden');
+    f.style.display = 'none';
+  });
 }
 
 function togglePrecastInstalled(val) {
@@ -3161,8 +3171,19 @@ function calcRefVolume() {
   const meters = parseFloat(document.getElementById('ref-meters').value) || 0;
   const width  = parseFloat(document.getElementById('ref-width').value)  || 0;
   const depth  = parseFloat(document.getElementById('ref-depth').value)  || 0;
-  const vol = document.getElementById('ref-volume');
-  if (vol) vol.value = (meters && width && depth) ? (meters * width * depth).toFixed(2) : '';
+  const diaMm  = parseFloat(document.getElementById('ref-pipedia').value) || 0;
+  const diaM   = diaMm / 1000;
+
+  const gross   = (meters && width && depth) ? meters * width * depth : 0;
+  const pipeVol = (meters && diaMm) ? 0.785 * meters * diaM * diaM : 0;
+  const net     = Math.max(0, gross - pipeVol);
+
+  const volEl     = document.getElementById('ref-volume');
+  const pipeVolEl = document.getElementById('ref-pipevol');
+  const netEl     = document.getElementById('ref-netvol');
+  if (volEl)     volEl.value     = gross    ? gross.toFixed(3)    : '';
+  if (pipeVolEl) pipeVolEl.value = pipeVol  ? pipeVol.toFixed(3)  : '';
+  if (netEl)     netEl.value     = (gross && pipeVol) ? net.toFixed(3) : (gross ? gross.toFixed(3) : '');
 }
 
 
@@ -3223,7 +3244,8 @@ function editReport(id) {
     } else if (r.type === 'refill') {
       set('ref-from', r.from); set('ref-to', r.to);
       set('ref-meters', r.meters); set('ref-road', r.road);
-      set('ref-width', r.width||''); set('ref-depth', r.depth||''); set('ref-volume', r.volume||'');
+      set('ref-width', r.width||''); set('ref-depth', r.depth||''); set('ref-pipedia', r.pipeDia||'');
+      set('ref-volume', r.volume||''); set('ref-pipevol', r.pipeVol||''); set('ref-netvol', r.netVol||'');
       set('ref-lat2', r.lat2 || ''); set('ref-lon2', r.lon2 || '');
     } else if (r.type === 'valve') {
       set('val-chainage', r.chainage);
@@ -4184,9 +4206,12 @@ function submitReport(type) {
     data.date       = document.getElementById('ref-date').value;
     data.from       = from; data.to = to;
     data.meters     = to > from ? (to - from) : parseFloat(document.getElementById('ref-meters').value) || 0;
-    data.width      = parseFloat(document.getElementById('ref-width').value)  || null;
-    data.depth      = parseFloat(document.getElementById('ref-depth').value)  || null;
-    data.volume     = parseFloat(document.getElementById('ref-volume').value) || (data.width && data.depth ? parseFloat((data.meters * data.width * data.depth).toFixed(2)) : null);
+    data.width      = parseFloat(document.getElementById('ref-width').value)    || null;
+    data.depth      = parseFloat(document.getElementById('ref-depth').value)    || null;
+    data.pipeDia    = parseFloat(document.getElementById('ref-pipedia').value)  || null;
+    data.volume     = parseFloat(document.getElementById('ref-volume').value)   || null;
+    data.pipeVol    = parseFloat(document.getElementById('ref-pipevol').value)  || null;
+    data.netVol     = parseFloat(document.getElementById('ref-netvol').value)   || null;
     data.road       = document.getElementById('ref-road').value;
     data.lat        = parseFloat(document.getElementById('ref-lat').value) || null;
     data.lon        = parseFloat(document.getElementById('ref-lon').value) || null;
@@ -5472,8 +5497,8 @@ function exportPDF(mode) {
         cols:['Route','From(m)','To(m)','Length','Size','Material','Supervisor'],
         row: r => [r.route||'-', r.from||0, r.to||0, fmtM(r.meters), r.size||'-', r.material||'-', r.supervisor] },
       { key:'refill', label:'Refilling',
-        cols:['Route','From(m)','To(m)','Length','Width(m)','Depth(m)','Volume(cum)','Road Status','Supervisor'],
-        row: r => [r.route||'-', r.from||0, r.to||0, fmtM(r.meters), r.width||'-', r.depth||'-', r.volume||'-', r.road||'-', r.supervisor] },
+        cols:['Route','From(m)','To(m)','Length','W(m)','D(m)','Gross(cum)','PipeDia(mm)','PipeVol(cum)','Net(cum)','Road','Supervisor'],
+        row: r => [r.route||'-', r.from||0, r.to||0, fmtM(r.meters), r.width||'-', r.depth||'-', r.volume||'-', r.pipeDia||'-', r.pipeVol||'-', r.netVol||'-', r.road||'-', r.supervisor] },
       { key:'valve', label:'Valves',
         cols:['Type','Size','Chainage(m)','Depth(m)','Supervisor'],
         row: r => [r.valType||'-', r.size||'-', r.chainage||'-', r.depth||'-', r.supervisor] },
@@ -5528,11 +5553,13 @@ function exportPDF(mode) {
       <div style="font-size:11px;color:#888;margin-top:2px">${pipeReps.length} records</div>
     </div>`;
 
-    const refTotalVol = refReps.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
+    const refGrossVol = refReps.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
+    const refNetVol   = refReps.reduce((s,r)=>s+(parseFloat(r.netVol||r.volume)||0),0);
     if (refReps.length) bodyHTML += `<div style="background:#e8fff0;border:1px solid #30D158;border-radius:8px;padding:10px 12px">
       <div style="font-size:11px;font-weight:700;color:#30D158;margin-bottom:6px">🪣 REFILLING</div>
       <div style="font-size:12px">Total Length: <b>${fmtM(refTotalM)}</b></div>
-      <div style="font-size:12px">Total Volume: <b>${refTotalVol.toFixed(2)} cum</b></div>
+      <div style="font-size:12px">Gross Volume: <b>${refGrossVol.toFixed(3)} cum</b></div>
+      <div style="font-size:12px">Net Refilling Qty: <b>${refNetVol.toFixed(3)} cum</b></div>
       <div style="font-size:11px;color:#888;margin-top:2px">${refReps.length} records</div>
     </div>`;
 
