@@ -1978,11 +1978,13 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           <div style="flex:1;height:1px;background:var(--border)"></div>
         </div>
 
-        <!-- Picker: flagged CC encasing/RCC encasing entries from pipe laying -->
+        <!-- Picker: CC/RCC encasing from pipe laying + thrust blocks from fittings -->
         <div class="field-group">
-          <label style="display:flex;align-items:center;gap:6px">
-            <span style="background:rgba(191,90,242,0.15);border-radius:6px;padding:2px 7px;font-size:10px;color:#BF5AF2;font-weight:700">FROM PIPE LAYING</span>
-            CC Encasing / RCC Encasing
+          <label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="background:rgba(10,132,255,0.15);border-radius:6px;padding:2px 7px;font-size:10px;color:#0A84FF;font-weight:700">🧱 PIPE LAYING</span>
+            CC / RCC Encasing
+            <span style="background:rgba(255,159,10,0.15);border-radius:6px;padding:2px 7px;font-size:10px;color:#FF9F0A;font-weight:700">🔗 FITTINGS</span>
+            Thrust Block
           </label>
           <div id="str-encasing-picker">
             <div style="font-size:12px;color:var(--muted);padding:14px;border:1px dashed var(--border);border-radius:10px;text-align:center">
@@ -3764,9 +3766,7 @@ function findUncovered(from, to, coveredRanges) {
 }
 
 function checkDependency(type, data) {
-  // Returns { ok: bool, gaps: [], prereqType: '', prereqLabel: '' }
   let prereqType = null, prereqLabel = '', myLabel = '';
-
   if (type === 'pipe') {
     prereqType = 'excavation'; prereqLabel = 'Excavation'; myLabel = 'Pipe Laying';
   } else if (type === 'refill') {
@@ -3774,15 +3774,19 @@ function checkDependency(type, data) {
   } else {
     return { ok: true, gaps: [] };
   }
-
   if (!data.route || data.from == null || data.to == null || data.to <= data.from) {
-    return { ok: true, gaps: [] }; // no chainage to check
+    return { ok: true, gaps: [] };
   }
-
   const covered = getCoveredRanges(data.project, data.route, prereqType);
   const gaps    = findUncovered(data.from, data.to, covered);
-
   return { ok: gaps.length === 0, gaps, prereqLabel, myLabel };
+}
+
+// Check if a single chainage point is covered by pipe laying on the route
+function isPipeLaidAt(project, route, chainage) {
+  if (chainage == null || !route) return false;
+  var covered = getCoveredRanges(project, route, 'pipe');
+  return covered.some(function(seg) { return chainage >= seg.from && chainage <= seg.to; });
 }
 
 
@@ -4371,6 +4375,14 @@ function submitReport(type) {
     data.route    = document.getElementById('val-route').value;
     data.date     = document.getElementById('val-date').value;
     data.chainage = parseFloat(document.getElementById('val-chainage').value) || null;
+    // Dependency: pipe laying must be done at this chainage
+    if (data.chainage != null && data.route) {
+      if (!isPipeLaidAt(data.project, data.route, data.chainage)) {
+        showBlockedModal('Cannot Submit Valve Report',
+          'Pipe Laying not done at Ch:' + data.chainage + 'm. Complete Pipe Laying at this chainage first.');
+        return;
+      }
+    }
     data.valves   = collectValveEntries();
     // Legacy compat: set single valType/size/depth from first entry
     const firstV  = data.valves[0];
@@ -4453,6 +4465,14 @@ function submitReport(type) {
     data.date     = document.getElementById('fit-date').value;
     data.fitType  = fitType;
     data.chainage = parseFloat(document.getElementById('fit-chainage').value) || null;
+    // Dependency: pipe laying must be done at this chainage
+    if (data.chainage != null && data.route) {
+      if (!isPipeLaidAt(data.project, data.route, data.chainage)) {
+        showBlockedModal('Cannot Submit Fitting Report',
+          'Pipe Laying not done at Ch:' + data.chainage + 'm. Complete Pipe Laying at this chainage first.');
+        return;
+      }
+    }
     data.qty      = parseInt(document.getElementById('fit-qty').value) || 1;
     data.thrustBlock = document.getElementById('fit-thrust').value || '—';
     data.lat      = parseFloat(document.getElementById('fit-lat').value) || null;
