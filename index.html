@@ -3266,24 +3266,7 @@ let _editingReportId = null;
 
 function editReport(id) {
   if (currentRole !== 'admin') { showToast('Only admin can edit reports'); return; }
-  const reports = getReports();
-  const r = reports.find(r => r.id == id || String(r.id) === String(id));
-  if (!r) return;
-
-  // Dependency warning for edit
-  const depMsg = getEditDeleteDepMsg(r, 'edit');
-  if (depMsg) {
-    showConfirmModal(
-      '⚠️ Dependency Warning',
-      depMsg,
-      function() { _doEditReport(id); }
-    );
-    // Change confirm button label to "Edit Anyway"
-    const yesBtn = document.getElementById('_cmYes');
-    if (yesBtn) yesBtn.textContent = 'Edit Anyway';
-  } else {
-    _doEditReport(id);
-  }
+  _doEditReport(id);
 }
 
 function _doEditReport(id) {
@@ -4489,7 +4472,18 @@ function submitReport(type) {
 function doSaveReport(type, data) {
   const reports = getReports();
   if (_editingReportId) {
-    const idx = reports.findIndex(r => r.id === _editingReportId);
+    const orig = reports.find(function(r){ return r.id === _editingReportId; });
+    // Check edit dependency: new range must still cover all dependents
+    if (orig && (orig.type === 'excavation' || orig.type === 'pipe')) {
+      var newFrom = data.from != null ? data.from : orig.from;
+      var newTo   = data.to   != null ? data.to   : orig.to;
+      var editDep = checkEditDependency(orig, newFrom, newTo);
+      if (editDep.blocked) {
+        showBlockedModal('Cannot Save Edit', editDep.reason);
+        return;
+      }
+    }
+    const idx = reports.findIndex(function(r){ return r.id === _editingReportId; });
     if (idx > -1) {
       data.id = _editingReportId;
       data.timestamp = reports[idx].timestamp;
@@ -4521,37 +4515,43 @@ function doSaveReport(type, data) {
 }
 
 // ── Dependency message for edit/delete ─────────────────────────────────────
-function getEditDeleteDepMsg(r, action) {
-  const type = r.type;
-  const reports = getReports();
-  // If editing/deleting excavation — check if pipe exists in same range
-  if (type === 'excavation') {
-    const dependents = reports.filter(function(x) {
-      return x.project === r.project && x.route === r.route && x.type === 'pipe'
-        && x.from < r.to && x.to > r.from;
-    });
-    if (dependents.length) {
-      const act = action==='delete'?'Deleting':'Editing';
-      return 'Pipe Laying (' + dependents.length + ' record(s)) depends on this Excavation. ' + act + ' may break workflow. Overlap: ' + dependents.map(function(x){ return x.from+'m-'+x.to+'m'; }).join(', ');
-    }
-  }
-  if (type === 'pipe') {
-    const dependents = reports.filter(function(x) {
-      return x.project === r.project && x.route === r.route && x.type === 'refill'
-        && x.from < r.to && x.to > r.from;
-    });
-    if (dependents.length) {
-      const act = action==='delete'?'Deleting':'Editing';
-      return 'Refilling (' + dependents.length + ' record(s)) depends on this Pipe Laying. ' + act + ' may break workflow. Overlap: ' + dependents.map(function(x){ return x.from+'m-'+x.to+'m'; }).join(', ');
-    }
-  }
-  return null;
+// Check if deleting/editing r would break dependents.
+// Returns { blocked: bool, reason: string, dependents: [] }
+function checkDeleteDependency(r) {
+  var reports = getReports();
+  var depType = null, depLabel = '';
+  if (r.type === 'excavation') { depType = 'pipe';   depLabel = 'Pipe Laying'; }
+  if (r.type === 'pipe')       { depType = 'refill'; depLabel = 'Refilling'; }
+  if (!depType) return { blocked: false };
+  var deps = reports.filter(function(x) {
+    return x.project === r.project && x.route === r.route && x.type === depType
+      && String(x.id) !== String(r.id) && x.from < r.to && x.to > r.from;
+  });
+  if (!deps.length) return { blocked: false };
+  var ranges = deps.map(function(x){ return 'Ch:'+x.from+'-'+x.to+'m'; }).join(', ');
+  return { blocked: true, dependents: deps, reason: 'Cannot delete: ' + depLabel + ' records depend on this range: ' + ranges + '. Delete those ' + depLabel + ' records first.' };
+}
+
+function checkEditDependency(r, newFrom, newTo) {
+  var reports = getReports();
+  var depType = null, depLabel = '';
+  if (r.type === 'excavation') { depType = 'pipe';   depLabel = 'Pipe Laying'; }
+  if (r.type === 'pipe')       { depType = 'refill'; depLabel = 'Refilling'; }
+  if (!depType) return { blocked: false };
+  var deps = reports.filter(function(x) {
+    return x.project === r.project && x.route === r.route && x.type === depType
+      && String(x.id) !== String(r.id) && x.from < r.to && x.to > r.from;
+  });
+  if (!deps.length) return { blocked: false };
+  var uncovered = deps.filter(function(x) { return x.from < newFrom || x.to > newTo; });
+  if (!uncovered.length) return { blocked: false };
+  var ranges = uncovered.map(function(x){ return 'Ch:'+x.from+'-'+x.to+'m'; }).join(', ');
+  return { blocked: true, reason: 'Cannot edit: ' + depLabel + ' records exist outside new range Ch:'+newFrom+'-'+newTo+'m: ' + ranges + '. Edit or delete those records first.' };
 }
 
 function getReports() {
   return JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
 }
-
 // ========== DASHBOARD ==========
 function updateDashboard() {
   // Populate project filter dropdown (admin only)
@@ -4778,13 +4778,18 @@ function deleteReport(id) {
   const reports = getReports();
   const r = reports.find(function(x) { return String(x.id) === String(id); });
   if (!r) { showToast('Report not found'); return; }
-  const depWarn = getEditDeleteDepMsg(r, 'delete');
-  const delMsg = 'Delete this ' + (r.type||'') + ' report dated ' + (r.date||'') + '? Cannot be undone.' + (depWarn ? ' Warning: ' + depWarn : '');
+
+  // Hard block if dependents exist
+  var depCheck = checkDeleteDependency(r);
+  if (depCheck.blocked) {
+    showBlockedModal('Cannot Delete', depCheck.reason);
+    return;
+  }
+
   showConfirmModal(
-    depWarn ? '⚠️ Dependency Warning' : 'Delete Report',
-    delMsg,
+    'Delete Report',
+    'Delete this ' + (r.type||'') + ' report? Ch:'+(r.from||'-')+'–'+(r.to||r.chainage||'-')+'m · '+r.date+' · Cannot be undone.',
     function() {
-      // Remove from local immediately
       var updated = getReports().filter(function(x) { return String(x.id) !== String(id); });
       localStorage.setItem('aquatrack_reports', JSON.stringify(updated));
       updateDashboard();
@@ -4792,7 +4797,6 @@ function deleteReport(id) {
       refreshMapPins();
       if (typeof renderTracker === 'function') renderTracker();
       showToast('🗑️ Deleted');
-      // Delete from Firestore + record in _deletions so all devices sync
       fbUpdateStatus('saving');
       fbDeleteReport(id).then(function(ok) {
         fbUpdateStatus(ok ? 'synced' : 'offline');
@@ -6765,6 +6769,23 @@ function copySyncCode(u) { docopySyncCode(u); }
 function deleteSupervisor(u) { dodeleteSupervisor(u); }
 
 // Simple confirm modal (avoids browser confirm() being blocked)
+function showBlockedModal(title, msg) {
+  var existing = document.getElementById('_blockedModal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = '_blockedModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1c1c1e;border:2px solid rgba(255,69,58,0.6);border-radius:16px;padding:24px;max-width:340px;width:100%';
+  box.innerHTML = '<div style="font-size:15px;font-weight:700;color:#FF453A;margin-bottom:12px">' + title + '</div>'
+    + '<div style="font-size:13px;color:rgba(255,255,255,0.8);line-height:1.6;white-space:pre-line;margin-bottom:20px">' + msg + '</div>'
+    + '<button id="_blockedOK" style="width:100%;padding:12px;border-radius:10px;background:rgba(255,69,58,0.2);border:1px solid rgba(255,69,58,0.5);color:#FF453A;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">OK, Understood</button>';
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  document.getElementById('_blockedOK').onclick = function(){ modal.remove(); };
+  modal.onclick = function(e){ if(e.target===modal) modal.remove(); };
+}
+
 function showConfirmModal(title, msg, onYes) {
   let modal = document.getElementById('_confirmModal');
   if (!modal) {
