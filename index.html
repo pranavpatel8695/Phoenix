@@ -4086,18 +4086,12 @@ function submitReport(type) {
       if (!data.soil)                 highlight('exc-soil',    'Soil Type is required');
       if (!document.getElementById('exc-width').value.trim()) highlight('exc-width', 'Trench Width is required');
       if (!document.getElementById('exc-depth').value.trim()) highlight('exc-depth', 'Trench Depth is required');
-      if (!data.lat || !data.lon)     highlight('exc-lat',     'Starting Point GPS is required');
-      if (!data.lat || !data.lon)     highlight('exc-lon',     '');
-      if (!data.lat2 || !data.lon2)   highlight('exc-lat2',    'Ending Point GPS is required');
-      if (!data.lat2 || !data.lon2)   highlight('exc-lon2',    '');
 
       // Photo check — preview divs must have at least one image
-      const startPhotos = document.getElementById('exc-photos-start');
-      const endPhotos   = document.getElementById('exc-photos-end');
-      const startPrev   = document.getElementById('exc-photo-prev-start');
-      const endPrev     = document.getElementById('exc-photo-prev-end');
-      const hasStartPhoto = startPhotos && startPhotos.files && startPhotos.files.length > 0;
-      const hasEndPhoto   = endPhotos   && endPhotos.files   && endPhotos.files.length   > 0;
+      const startPrev = document.getElementById('exc-photo-prev-start');
+      const endPrev   = document.getElementById('exc-photo-prev-end');
+      const hasStartPhoto = startPrev && startPrev.querySelectorAll('img').length > 0;
+      const hasEndPhoto   = endPrev   && endPrev.querySelectorAll('img').length   > 0;
       if (!hasStartPhoto) {
         if (startPrev) { startPrev.style.outline = '2px solid #FF453A'; startPrev.style.borderRadius = '8px'; }
         excErrors.push('Starting Point photo is required');
@@ -4170,16 +4164,12 @@ function submitReport(type) {
       if (!data.material || data.material === '')                highlight('pipe-material',  'Material is required');
       if (!document.getElementById('pipe-from').value.trim())   highlight('pipe-from',      'Chainage From is required');
       if (!document.getElementById('pipe-to').value.trim())     highlight('pipe-to',        'Chainage To is required');
-      if (!data.lat || !data.lon)  { highlight('pipe-lat', 'Starting Point GPS is required'); highlight('pipe-lon', ''); }
-      if (!data.lat2 || !data.lon2){ highlight('pipe-lat2','Ending Point GPS is required');   highlight('pipe-lon2',''); }
 
       // Photo checks
-      const startPhotos = document.getElementById('pipe-photos-start');
-      const endPhotos   = document.getElementById('pipe-photos-end');
-      const startPrev   = document.getElementById('pipe-photo-prev-start');
-      const endPrev     = document.getElementById('pipe-photo-prev-end');
-      const hasStartPhoto = startPhotos && startPhotos.files && startPhotos.files.length > 0;
-      const hasEndPhoto   = endPhotos   && endPhotos.files   && endPhotos.files.length   > 0;
+      const startPrev = document.getElementById('pipe-photo-prev-start');
+      const endPrev   = document.getElementById('pipe-photo-prev-end');
+      const hasStartPhoto = startPrev && startPrev.querySelectorAll('img').length > 0;
+      const hasEndPhoto   = endPrev   && endPrev.querySelectorAll('img').length   > 0;
       if (!hasStartPhoto) {
         if (startPrev) { startPrev.style.outline = '2px solid #FF453A'; startPrev.style.borderRadius = '8px'; }
         pipeErrors.push('Starting Point photo is required');
@@ -4256,16 +4246,12 @@ function submitReport(type) {
       if (!document.getElementById('ref-from').value.trim())  highlight('ref-from',    'Chainage From is required');
       if (!document.getElementById('ref-to').value.trim())    highlight('ref-to',      'Chainage To is required');
       if (!data.road || data.road === '')                      highlight('ref-road',    'Road Restoration Status is required');
-      if (!data.lat  || !data.lon)  { highlight('ref-lat',  'Starting Point GPS is required'); highlight('ref-lon',  ''); }
-      if (!data.lat2 || !data.lon2) { highlight('ref-lat2', 'Ending Point GPS is required');   highlight('ref-lon2', ''); }
 
-      // Photo checks
-      const startPhotos = document.getElementById('ref-photos-start');
-      const endPhotos   = document.getElementById('ref-photos-end');
-      const startPrev   = document.getElementById('ref-photo-prev-start');
-      const endPrev     = document.getElementById('ref-photo-prev-end');
-      const hasStartPhoto = startPhotos && startPhotos.files && startPhotos.files.length > 0;
-      const hasEndPhoto   = endPhotos   && endPhotos.files   && endPhotos.files.length   > 0;
+      // Photo checks — use preview div (reliable on all Android browsers)
+      const startPrev = document.getElementById('ref-photo-prev-start');
+      const endPrev   = document.getElementById('ref-photo-prev-end');
+      const hasStartPhoto = startPrev && startPrev.querySelectorAll('img').length > 0;
+      const hasEndPhoto   = endPrev   && endPrev.querySelectorAll('img').length   > 0;
       if (!hasStartPhoto) {
         if (startPrev) { startPrev.style.outline = '2px solid #FF453A'; startPrev.style.borderRadius = '8px'; }
         refErrors.push('Starting Point photo is required');
@@ -6325,7 +6311,7 @@ function renderTracker() {
     let actions = '';
     let totalPending = 0;
 
-    // 1. Pipe gaps
+    // 1. Pipe gaps — show all gaps
     if (pipeGaps.length) {
       pipeGaps.forEach(g => {
         totalPending++;
@@ -6408,15 +6394,21 @@ function renderTracker() {
     // ── CHAMBERS TABLE ─────────────────────────────────────────────────────
     const chamTable = sectionTable(C.chamber,
       '🏛️ Chambers — '+chamPts.length+' built',
-      [{label:'#'},{label:'Type',bold:true},{label:'Chainage',center:true},{label:'Slab'},{label:'Precast Kept',center:true},{label:'Date'}],
-      chamPts.map((r,i) => [
-        i+1,
-        r.chamType||'—',
-        r.chainage!=null ? `<span style="color:${C.chamber};font-weight:700">${r.chainage}m</span>` : '—',
-        r.slab||'—',
-        r.slab==='Precast' ? statusBadge(r.slabKept==='Kept'?'kept':r.slabKept==='Not Kept'?'notkept':'unknown') : '<span style="color:var(--muted);font-size:10px">N/A</span>',
-        r.date||'—'
-      ])
+      [{label:'#'},{label:'Type',bold:true},{label:'Chainage',center:true},{label:'Size (L×W×H)',center:true},{label:'Slab'},{label:'Precast Kept',center:true},{label:'Date'}],
+      chamPts.map((r,i) => {
+        const size = (r.length||r.width||r.height)
+          ? [(r.length||'?')+'m', (r.width||'?')+'m', (r.height||'?')+'m'].join(' × ')
+          : '—';
+        return [
+          i+1,
+          r.chamType||'—',
+          r.chainage!=null ? '<span style="color:'+C.chamber+';font-weight:700">'+r.chainage+'m</span>' : '—',
+          size,
+          r.slab||'—',
+          r.slab==='Precast' ? statusBadge(r.slabKept==='Kept'?'kept':r.slabKept==='Not Kept'?'notkept':'unknown') : '<span style="color:var(--muted);font-size:10px">N/A</span>',
+          r.date||'—'
+        ];
+      })
     );
 
     // ── FITTINGS TABLE ─────────────────────────────────────────────────────
@@ -6435,6 +6427,22 @@ function renderTracker() {
           tbConcrete, r.date||'—'
         ];
       })
+    );
+
+    // ── CONCRETE WORK TABLE ───────────────────────────────────────────────
+    const strPts = rr.filter(r => r.type === 'structure');
+    const concreteTable = sectionTable(C.structure,
+      '🏗️ Concrete Work — '+strPts.length+' record'+(strPts.length!==1?'s':''),
+      [{label:'#'},{label:'Type',bold:true},{label:'Chainage',center:true},{label:'Est. Qty (m³)',center:true},{label:'Actual Qty (m³)',center:true},{label:'Status',center:true},{label:'Date'}],
+      strPts.map((r,i) => [
+        i+1,
+        r.strType||'—',
+        r.chainage!=null ? '<span style="color:'+C.structure+';font-weight:700">'+r.chainage+'m</span>' : (r.from!=null?r.from+'–'+(r.to||'?')+'m':'—'),
+        r.estConc!=null ? '<span style="font-weight:700;color:'+C.structure+'">'+r.estConc+'</span>' : '—',
+        r.actualConc!=null ? '<span style="font-weight:700;color:#30D158">'+r.actualConc+'</span>' : '—',
+        statusBadge(r.workStatus==='Completed'?'done':'partial'),
+        r.date||'—'
+      ])
     );
 
     // ── Final render ───────────────────────────────────────────────────────
@@ -6494,6 +6502,7 @@ function renderTracker() {
 
       <!-- ④ Detail tables -->
       ${encTable}
+      ${concreteTable}
       ${valTable}
       ${chamTable}
       ${fitTable}
