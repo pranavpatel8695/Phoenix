@@ -2611,14 +2611,14 @@ function listLocalBackups() {
   const backups = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && key.startsWith('aquatrack_backup_')) {
+    if (key && (key.startsWith('aquatrack_backup_'))) {
       try {
         const b = JSON.parse(localStorage.getItem(key));
-        backups.push({ key, version: b.version, timestamp: b.timestamp, count: b.reports?.length || 0 });
+        backups.push({ key, version: b.version, timestamp: b.timestamp, count: Array.isArray(b.reports) ? b.reports.length : 0 });
       } catch(e) {}
     }
   }
-  return backups.sort((a,b) => b.timestamp?.localeCompare(a.timestamp));
+  return backups.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 }
 
 function restoreLocalBackup(key) {
@@ -2653,7 +2653,7 @@ function renderBackupList() {
   el.innerHTML = backups.map(b =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <div>
-        <div style="font-size:12px;font-weight:600;color:var(--text)">Before v${b.version} update</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text)">'🔄 Before v'+b.version+' update'</div>
         <div style="font-size:11px;color:var(--muted)">${b.timestamp ? new Date(b.timestamp).toLocaleString() : ''} · ${b.count} reports</div>
       </div>
       <button onclick="restoreLocalBackup('${b.key}')"
@@ -2871,6 +2871,7 @@ function doLogoutWithExport() {
 
 // Enter key to login
 document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
 
 function initApp() {
   fbInit();
