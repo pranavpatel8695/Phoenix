@@ -2128,16 +2128,6 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
           <label>Type of Fitting <span style="color:#FF453A">*</span></label>
           <select id="fit-type-select" onchange="onFitTypeChange(this)" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px">
             <option value="">— Select Type —</option>
-            <optgroup label="Standard">
-              <option value="Tee">🔀 Tee</option>
-              <option value="Bend 90°">↩️ Bend 90°</option>
-              <option value="Bend 45°">↪️ Bend 45°</option>
-              <option value="Reducer">🔻 Reducer</option>
-              <option value="Flange">⭕ Flange</option>
-              <option value="Coupling">🔗 Coupling</option>
-              <option value="Cap/Blank">🔵 Cap/Blank</option>
-              <option value="Other">📝 Other</option>
-            </optgroup>
           </select>
           <input type="hidden" id="fit-type" value="">
           <input type="text" id="fit-type-other" placeholder="Specify fitting type" style="margin-top:6px;display:none">
@@ -4112,11 +4102,24 @@ function populateFitTypeDropdown() {
   const proj = projEl ? projEl.value : '';
   const specials = proj ? getSpecialsForProject(proj) : [];
 
-  // Remove existing specials optgroup
-  const existing = sel.querySelector('optgroup[label="Specials"]');
-  if (existing) existing.remove();
+  // Clear all options except first placeholder
+  sel.innerHTML = '<option value="">— Select Type —</option>';
 
-  // Add specials optgroup with remaining nos
+  // Admin & PM see Standard types too; Supervisor/Engineer sees ONLY specials
+  if (currentRole === 'admin' || currentRole === 'pm') {
+    const stdGrp = document.createElement('optgroup');
+    stdGrp.label = 'Standard';
+    [['Tee','🔀 Tee'],['Bend 90°','↩️ Bend 90°'],['Bend 45°','↪️ Bend 45°'],
+     ['Reducer','🔻 Reducer'],['Flange','⭕ Flange'],['Coupling','🔗 Coupling'],
+     ['Cap/Blank','🔵 Cap/Blank'],['Other','📝 Other']].forEach(function(item) {
+      const opt = document.createElement('option');
+      opt.value = item[0]; opt.textContent = item[1];
+      stdGrp.appendChild(opt);
+    });
+    sel.appendChild(stdGrp);
+  }
+
+  // Specials — only those added for this project
   if (specials.length > 0) {
     const grp = document.createElement('optgroup');
     grp.label = 'Specials';
@@ -4137,9 +4140,15 @@ function populateFitTypeDropdown() {
       grp.appendChild(opt);
     });
     sel.appendChild(grp);
+  } else if (currentRole === 'supervisor') {
+    // No specials added yet — show a message option
+    const opt = document.createElement('option');
+    opt.value = ''; opt.disabled = true;
+    opt.textContent = 'No specials added for this project';
+    sel.appendChild(opt);
   }
 
-  // Reset
+  // Reset selection
   sel.value = '';
   document.getElementById('fit-type').value = '';
   const other = document.getElementById('fit-type-other');
