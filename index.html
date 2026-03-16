@@ -2235,8 +2235,8 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
 
     <!-- ===== SETTINGS TAB (admin only) ===== -->
     <div id="tab-settings" class="hidden">
-      <div class="section-header">Project Settings</div>
-      <p class="section-sub">Manage projects, upload KMZ files, define pipeline routes</p>
+      <div class="section-header" id="settingsPageTitle">Project Settings</div>
+      <p class="section-sub" id="settingsPageSub">Manage projects, upload KMZ files, define pipeline routes</p>
 
       <!-- Admin Credentials (admin only) -->
       <div class="admin-only card" style="margin-bottom:12px">
@@ -2301,8 +2301,20 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
       <!-- Project selector -->
       <div class="project-tab-row" id="settingsProjTabs"></div>
 
+      <!-- Fitting Specials (PM & Admin) -->
+      <div class="card pm-specials-card" style="margin-bottom:12px">
+        <div class="card-title">🔗 Fitting Specials</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Add special fitting types for this project. Supervisors will see these in the fitting form dropdown.</p>
+        <div id="specialsListPM" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="newSpecialInputPM" placeholder="e.g. Puddle Flange 600mm" style="flex:2;min-width:140px;padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:13px">
+          <input type="number" id="newSpecialTotalPM" placeholder="Nos" min="0" style="flex:1;min-width:70px;padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;text-align:center">
+          <button onclick="addSpecialForProject()" style="padding:9px 16px;border-radius:10px;border:none;background:#5AC8FA;color:#1e1e28;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">＋ Add</button>
+        </div>
+      </div>
+
       <!-- Route Management -->
-      <div class="card">
+      <div class="card admin-only-card">
         <div class="card-title">🛣️ Pipeline Routes
           <span style="font-size:11px;color:var(--muted);font-family:'Noto Serif',Cambria,Georgia,serif;font-weight:400;margin-left:8px">Supervisors select from these when submitting reports</span>
         </div>
@@ -2950,6 +2962,13 @@ function initApp() {
   document.querySelectorAll('.admin-settings-only').forEach(el => {
     const isTab = el.classList.contains('nav-tab');
     el.style.display = (currentRole === 'admin' || currentRole === 'pm') ? (isTab ? 'flex' : 'block') : 'none';
+  });
+  // Settings cards: admin-only-card hidden from PM, pm-specials-card shown to PM & admin
+  document.querySelectorAll('.admin-only-card').forEach(el => {
+    el.style.display = currentRole === 'admin' ? 'block' : 'none';
+  });
+  document.querySelectorAll('.pm-specials-card').forEach(el => {
+    el.style.display = (currentRole === 'admin' || currentRole === 'pm') ? 'block' : 'none';
   });
 
   updateDashboard();
@@ -7699,7 +7718,13 @@ function populateAllProjectDropdowns() {
 }
 
 function renderSpecialsList() {
-  const el = document.getElementById('specialsList');
+  // Render into both admin and PM specials list containers
+  ['specialsList','specialsListPM'].forEach(function(elId) {
+    const elPM = document.getElementById(elId);
+    if (elPM) _renderSpecialsInto(elPM);
+  });
+}
+function _renderSpecialsInto(el) {
   if (!el) return;
   const proj = settingsActiveProject;
   if (!proj) { el.innerHTML = '<div style="font-size:11px;color:var(--muted)">No project selected.</div>'; return; }
@@ -7747,8 +7772,13 @@ function renderSpecialsList() {
 }
 
 function addSpecialForProject() {
-  const nameInput  = document.getElementById('newSpecialInput');
-  const totalInput = document.getElementById('newSpecialTotal');
+  // Support both admin inputs (newSpecialInput) and PM inputs (newSpecialInputPM)
+  const nameInput  = document.getElementById('newSpecialInputPM') && document.getElementById('newSpecialInputPM').value.trim()
+    ? document.getElementById('newSpecialInputPM')
+    : document.getElementById('newSpecialInput');
+  const totalInput = document.getElementById('newSpecialTotalPM') && document.getElementById('newSpecialTotalPM').value.trim()
+    ? document.getElementById('newSpecialTotalPM')
+    : document.getElementById('newSpecialTotal');
   const val   = nameInput  ? nameInput.value.trim()  : '';
   const total = totalInput ? parseInt(totalInput.value) || 0 : 0;
   if (!val) { showToast('⚠️ Enter a special name'); return; }
@@ -7811,7 +7841,18 @@ function initSettings() {
   const visProj = getVisibleProjects();
   if (!settingsActiveProject || !visProj.includes(settingsActiveProject))
     settingsActiveProject = visProj[0] || getProjects()[0];
-  if (currentRole === 'admin') syncUserProjects(); // keep user records in sync
+  if (currentRole === 'admin') syncUserProjects();
+
+  // Update page title for PM
+  const titleEl = document.getElementById('settingsPageTitle');
+  const subEl   = document.getElementById('settingsPageSub');
+  if (currentRole === 'pm') {
+    if (titleEl) titleEl.textContent = 'Fitting Specials';
+    if (subEl)   subEl.textContent   = 'Manage fitting specials for your assigned projects';
+  } else {
+    if (titleEl) titleEl.textContent = 'Project Settings';
+    if (subEl)   subEl.textContent   = 'Manage projects, upload KMZ files, define pipeline routes';
+  }
   renderProjectTabs();
   renderKmzStatus();
   renderRouteAdmin();
