@@ -7523,7 +7523,8 @@ function initSettings() {
 
   // Re-enforce visibility on every settings open
   document.querySelectorAll('.admin-only').forEach(el => {
-    el.style.display = currentRole === 'admin' ? '' : 'none';
+    if (!el.classList.contains('nav-tab'))
+      el.style.display = currentRole === 'admin' ? 'block' : 'none';
   });
   document.querySelectorAll('.admin-only-card').forEach(el => {
     el.style.display = currentRole === 'admin' ? 'block' : 'none';
