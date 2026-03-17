@@ -2239,7 +2239,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
       <p class="section-sub" id="settingsPageSub">Manage projects, upload KMZ files, define pipeline routes</p>
 
       <!-- Admin Credentials (admin only) -->
-      <div class="admin-only card" style="margin-bottom:12px">
+      <div class="admin-card card" style="margin-bottom:12px">
         <div class="card-title">🔐 Admin Login Credentials</div>
         <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Change the admin username and password.</p>
         <div class="field-group" style="margin-bottom:8px">
@@ -2261,7 +2261,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
       </div>
 
       <!-- Supervisor Accounts (admin only) -->
-      <div class="admin-only card" style="margin-bottom:12px">
+      <div class="admin-card card" style="margin-bottom:12px">
         <div class="card-title">👥 Supervisor / Engineer Accounts</div>
         <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Add or remove supervisor login accounts. Admin account cannot be changed here.</p>
         <div id="supervisorAccountList" style="margin-bottom:12px"></div>
@@ -2272,7 +2272,7 @@ if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
       </div>
 
       <!-- Backup & Restore (admin only) -->
-      <div class="admin-only card" style="margin-bottom:12px">
+      <div class="admin-card card" style="margin-bottom:12px">
         <div class="card-title">🔒 Data Backup & Restore</div>
         <div style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px">
           <span style="color:var(--green);font-weight:600" id="appVersionDisplay">App Version: 2.0</span>
@@ -2952,6 +2952,9 @@ function initApp() {
     } else {
       el.style.display = currentRole === 'admin' ? 'block' : 'none';
     }
+  });
+  document.querySelectorAll('.admin-card').forEach(el => {
+    el.style.display = currentRole === 'admin' ? 'block' : 'none';
   });
   document.querySelectorAll('.admin-settings-only').forEach(el => {
     const isTab = el.classList.contains('nav-tab');
@@ -7522,9 +7525,8 @@ function initSettings() {
   }
 
   // Re-enforce visibility on every settings open
-  document.querySelectorAll('.admin-only').forEach(el => {
-    if (!el.classList.contains('nav-tab'))
-      el.style.display = currentRole === 'admin' ? 'block' : 'none';
+  document.querySelectorAll('.admin-card').forEach(el => {
+    el.style.display = currentRole === 'admin' ? 'block' : 'none';
   });
   document.querySelectorAll('.admin-only-card').forEach(el => {
     el.style.display = currentRole === 'admin' ? 'block' : 'none';
