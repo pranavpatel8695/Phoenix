@@ -1014,190 +1014,250 @@ self.addEventListener('fetch',e=>{if(e.request.url.includes('openstreetmap')){e.
 </script>
 
 <script>
-// ========== FIREBASE CONFIG ==========
-const FB_CONFIG = {
-  apiKey:            "AIzaSyCI8qKGoqZ6Djooc7HiYVhTyQirnSupnbM",
-  authDomain:        "pipeline-work-fdd83.firebaseapp.com",
-  projectId:         "pipeline-work-fdd83",
-  storageBucket:     "pipeline-work-fdd83.firebasestorage.app",
-  messagingSenderId: "911582766677",
-  appId:             "1:911582766677:web:f8d0426e6cb2d7c4ffd6dc"
-};
+// ========== APPWRITE CONFIG ==========
+const AW_ENDPOINT   = 'http://103.212.121.118/v1';
+const AW_PROJECT    = '69bf775300049155a9d9';
+const AW_DATABASE   = '69bf7846002d6b0b65f6';
+const AW_COLLECTION = 'reports';
+const AW_CONFIG_COL = 'config';
 
-let _fbApp = null, _db = null, _fst = null;
+let _awReady = false;
 
-function fbLoadSDK() {
-  return new Promise((resolve) => {
-    if (typeof firebase !== 'undefined') { resolve(true); return; }
-    let loaded = 0;
-    const scripts = [
-      'https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.min.js',
-      'https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.min.js'
-    ];
-    scripts.forEach(src => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = () => { loaded++; if (loaded === scripts.length) resolve(true); };
-      s.onerror = () => resolve(false);
-      document.head.appendChild(s);
-    });
-  });
-}
-
-async function fbInit() {
-  if (_fbApp) return true;
+// ── Appwrite API helper ────────────────────────────────────────────────────
+async function awRequest(method, path, data) {
+  const url = AW_ENDPOINT + path;
+  const headers = {
+    'X-Appwrite-Project': AW_PROJECT,
+    'Content-Type': 'application/json'
+  };
+  const opts = { method, headers };
+  if (data) opts.body = JSON.stringify(data);
   try {
-    const loaded = await fbLoadSDK();
-    if (!loaded || typeof firebase === 'undefined') { console.warn('Firebase SDK failed to load'); return false; }
-    _fbApp = firebase.initializeApp(FB_CONFIG);
-    _db    = firebase.firestore();
-    // Persistence disabled for faster startup
-    console.log('Firebase ready ✅');
-    return true;
-  } catch(e) { console.warn('Firebase init failed:', e); return false; }
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.message || res.status);
+    }
+    return res.status === 204 ? true : await res.json();
+  } catch(e) {
+    console.warn('Appwrite error:', e.message);
+    return null;
+  }
 }
 
-// ── Save report to Firestore (Option B: photos as base64) ─────────────────
-// TO SWITCH TO STORAGE LATER: replace this function with fbSaveReportWithStorage
+// ── Save report ────────────────────────────────────────────────────────────
 async function fbSaveReport(data) {
-  const ready = await fbInit();
-  if (!ready || !_db) return false;
+  fbUpdateStatus('saving');
   try {
-    const payload = Object.assign({}, data);
-    // Photos already compressed to 50KB on capture — just cap to 3 per field
-    ['photos','photosStart','photosEnd'].forEach(function(f) {
-      if (payload[f] && payload[f].length > 3) payload[f] = payload[f].slice(0, 3);
+    const d = Object.assign({}, data);
+    // Strip photos to save space
+    ['photos','photosStart','photosEnd'].forEach(f => {
+      if (d[f] && d[f].length > 3) d[f] = d[f].slice(0,3);
     });
-    payload.savedAt  = Date.now(); // use client timestamp for speed (no server round-trip)
-    payload.photoExp = Date.now() + 30*24*60*60*1000;
-    await _db.collection('reports').doc(String(data.id)).set(payload);
-    return true;
-  } catch(e) { console.warn('Firestore save failed:', e); return false; }
-}
 
-// ── Compress base64 image ──────────────────────────────────────────────────
-function compressBase64(dataUrl, quality) {
-  return new Promise(resolve => {
-    if (!dataUrl || !dataUrl.startsWith('data:image')) { resolve(dataUrl); return; }
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const max = 800;
-      let w = img.width, h = img.height;
-      if (w > max) { h = Math.round(h * max/w); w = max; }
-      if (h > max) { w = Math.round(w * max/h); h = max; }
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', quality || 0.5));
+    const doc = {
+      type:        String(d.type||''),
+      project:     String(d.project||''),
+      route:       String(d.route||''),
+      date:        String(d.date||''),
+      supervisor:  String(d.supervisor||''),
+      timestamp:   String(d.timestamp||''),
+      from_ch:     parseFloat(d.from)||0,
+      to_ch:       parseFloat(d.to)||0,
+      meters:      parseFloat(d.meters)||0,
+      volume:      parseFloat(d.volume)||0,
+      width:       parseFloat(d.width)||0,
+      depth:       parseFloat(d.depth)||0,
+      soil:        String(d.soil||''),
+      size:        String(d.size||''),
+      material:    String(d.material||''),
+      encasing:    String(d.encasing||''),
+      road:        String(d.road||''),
+      netVol:      parseFloat(d.netVol)||0,
+      pipeVol:     parseFloat(d.pipeVol)||0,
+      pipeDia:     parseFloat(d.pipeDia)||0,
+      chainage:    parseFloat(d.chainage)||0,
+      valType:     String(d.valType||''),
+      chamberReq:  String(d.chamberReq||''),
+      chamType:    String(d.chamType||''),
+      chamStatus:  String(d.chamStatus||''),
+      length:      parseFloat(d.length)||0,
+      height:      parseFloat(d.height)||0,
+      slab:        String(d.slab||''),
+      slabKept:    String(d.slabKept||''),
+      slabInstalled: String(d.slabInstalled||''),
+      valveRef:    String(d.valveRef||''),
+      fitType:     String(d.fitType||''),
+      thrustBlock: String(d.thrustBlock||''),
+      qty:         parseFloat(d.qty)||1,
+      special:     String(d.special||''),
+      strType:     String(d.strType||''),
+      workStatus:  String(d.workStatus||''),
+      remarks:     String(d.remarks||''),
+      estConc:     parseFloat(d.estConc)||0,
+      actualConc:  parseFloat(d.actualConc)||0,
+      encasings:   JSON.stringify(d.encasings||[]),
+      valves:      JSON.stringify(d.valves||[]),
+      connections: JSON.stringify(d.connections||[]),
+      data_json:   JSON.stringify(d).slice(0,65000),
     };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-}
 
-// Compress to target size (default 50KB)
-function compressToTargetSize(dataUrl, targetKB) {
-  targetKB = targetKB || 50;
-  return new Promise(function(resolve) {
-    if (!dataUrl || !dataUrl.startsWith('data:image')) { resolve(dataUrl); return; }
-    const img = new Image();
-    img.onload = function() {
-      let w = img.width, h = img.height;
-      // Scale down dimensions first
-      const maxDim = 640;
-      if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
-      if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      // Binary search for quality that hits target
-      let lo = 0.05, hi = 0.7, result = canvas.toDataURL('image/jpeg', 0.3);
-      for (let i = 0; i < 8; i++) {
-        const mid = (lo + hi) / 2;
-        const attempt = canvas.toDataURL('image/jpeg', mid);
-        const kb = Math.round(attempt.length * 0.75 / 1024);
-        if (kb <= targetKB) { lo = mid; result = attempt; }
-        else hi = mid;
-      }
-      resolve(result);
-    };
-    img.onerror = function() { resolve(dataUrl); };
-    img.src = dataUrl;
-  });
-}
+    // Check if exists — update or create
+    const existing = await awRequest('GET',
+      `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?queries[]=equal("data_json","${String(d.id)}")`
+    );
 
-// ── Delete report: remove from Firestore + record in _deletions collection ──
-async function fbDeleteReport(id) {
-  const ready = await fbInit();
-  if (!ready || !_db) return false;
-  try {
-    const sid = String(id);
-    // Delete the report doc
-    await _db.collection('reports').doc(sid).delete();
-    // Record deletion so ALL devices know to remove it
-    await _db.collection('_deletions').doc(sid).set({ id: sid, deletedAt: Date.now() });
-    return true;
-  } catch(e) { console.warn('fbDeleteReport failed:', e); return false; }
-}
+    // Always create with unique ID based on report id
+    const docId = 'r' + String(d.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,30);
 
-// ── Full sync: Firestore is source of truth ─────────────────────────────────
-async function fbSync() {
-  const ready = await fbInit();
-  if (!ready) { fbUpdateStatus('offline'); return; }
-  fbUpdateStatus('syncing');
+    // Try update first
+    let result = await awRequest('PATCH',
+      `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents/${docId}`,
+      { data: doc }
+    );
 
-  try {
-    // 1. Fetch all current reports from Firestore
-    const snap = await _db.collection('reports').get();
-    const remote = snap.docs.map(function(d){ return d.data(); });
-
-    // 2. Fetch all deletions from Firestore
-    const delSnap = await _db.collection('_deletions').get();
-    const deletedSet = new Set(delSnap.docs.map(function(d){ return String(d.data().id); }));
-
-    // 3. Build authoritative map from remote (Firestore is truth)
-    const remoteMap = {};
-    remote.forEach(function(r) {
-      const sid = String(r.id);
-      if (!deletedSet.has(sid)) remoteMap[sid] = r;
-    });
-
-    // 4. Push local-only reports (submitted while offline) to Firestore
-    const local = JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
-    const toUpload = local.filter(function(r) {
-      const sid = String(r.id);
-      return !deletedSet.has(sid) && !remoteMap[sid];
-    });
-    if (toUpload.length) {
-      for (let i = 0; i < toUpload.length; i += 5) {
-        await Promise.all(toUpload.slice(i, i+5).map(function(r){ return fbSaveReport(r); }));
-      }
-      // Re-fetch after upload so we have full set
-      const snap2 = await _db.collection('reports').get();
-      snap2.docs.forEach(function(d) {
-        const r = d.data();
-        const sid = String(r.id);
-        if (!deletedSet.has(sid)) remoteMap[sid] = r;
-      });
+    // If not found, create
+    if (!result) {
+      result = await awRequest('POST',
+        `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents`,
+        { documentId: docId, data: doc, permissions: ['read("any")','update("any")','delete("any")'] }
+      );
     }
 
-    // 5. Firestore is authoritative — replace local storage completely
-    const merged = Object.values(remoteMap);
-    localStorage.setItem('aquatrack_reports', JSON.stringify(merged));
+    fbUpdateStatus(result ? 'synced' : 'offline');
+    return !!result;
+  } catch(e) {
+    console.warn('Save failed:', e);
+    fbUpdateStatus('offline');
+    return false;
+  }
+}
+
+// ── Delete report ──────────────────────────────────────────────────────────
+async function fbDeleteReport(id) {
+  const docId = 'r' + String(id).replace(/[^a-zA-Z0-9]/g,'').slice(0,30);
+  const result = await awRequest('DELETE',
+    `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents/${docId}`
+  );
+  return result !== null;
+}
+
+// ── Sync: pull all reports from Appwrite ──────────────────────────────────
+async function fbSync() {
+  fbUpdateStatus('syncing');
+  try {
+    let allDocs = [], offset = 0, limit = 100;
+    while (true) {
+      const res = await awRequest('GET',
+        `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?limit=${limit}&offset=${offset}`
+      );
+      if (!res || !res.documents) break;
+      allDocs = allDocs.concat(res.documents);
+      if (res.documents.length < limit) break;
+      offset += limit;
+    }
+
+    // Convert Appwrite docs back to app format
+    const reports = allDocs.map(doc => {
+      try {
+        const d = JSON.parse(doc.data_json || '{}');
+        // Restore numeric from fields
+        if (doc.from_ch !== undefined) d.from = doc.from_ch;
+        if (doc.to_ch   !== undefined) d.to   = doc.to_ch;
+        if (!d.type) d.type = doc.type;
+        if (!d.project) d.project = doc.project;
+        if (!d.route) d.route = doc.route;
+        if (!d.date) d.date = doc.date;
+        if (!d.supervisor) d.supervisor = doc.supervisor;
+        return d;
+      } catch(e) { return null; }
+    }).filter(Boolean);
+
+    // Push local-only reports
+    const local = JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
+    const remoteIds = new Set(reports.map(r => String(r.id)));
+    const toUpload = local.filter(r => !remoteIds.has(String(r.id)));
+    for (const r of toUpload) await fbSaveReport(r);
+
+    // Also pull config
+    await fbPullConfig();
+
+    // Merge: remote is truth
+    const finalMap = {};
+    reports.forEach(r => { if (r.id) finalMap[String(r.id)] = r; });
+    toUpload.forEach(r => { if (r.id) finalMap[String(r.id)] = r; });
+    localStorage.setItem('aquatrack_reports', JSON.stringify(Object.values(finalMap)));
 
     fbUpdateStatus('synced');
     updateDashboard();
-    refreshMapPins();
-    if (typeof renderTracker === 'function') renderTracker();
     if (typeof renderAllReports === 'function') renderAllReports();
-
+    if (typeof renderTracker    === 'function') renderTracker();
+    if (typeof refreshMapPins   === 'function') refreshMapPins();
   } catch(e) {
-    console.warn('fbSync failed:', e);
+    console.warn('Sync failed:', e);
     fbUpdateStatus('offline');
   }
 }
 
-// ── Status indicator ───────────────────────────────────────────────────────
+// ── Push admin config to Appwrite ─────────────────────────────────────────
+function fbPushAdminData() {
+  if (currentRole !== 'admin' && currentRole !== 'pm') return;
+  const data = {
+    projects:    getProjects(),
+    routes:      getAdminRoutes(),
+    assignments: getProjectAssignments(),
+    specials:    getProjectSpecials(),
+    users:       getUsers(),
+    updatedAt:   Date.now()
+  };
+  awRequest('PATCH',
+    `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents/adminData`,
+    { data: { key: 'adminData', value: JSON.stringify(data).slice(0,65000) } }
+  ).then(res => {
+    if (!res) {
+      awRequest('POST',
+        `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents`,
+        { documentId: 'adminData', data: { key: 'adminData', value: JSON.stringify(data).slice(0,65000) },
+          permissions: ['read("any")','update("any")','delete("any")'] }
+      );
+    }
+  });
+}
+
+// ── Pull admin config from Appwrite ───────────────────────────────────────
+async function fbPullConfig() {
+  try {
+    const res = await awRequest('GET',
+      `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents/adminData`
+    );
+    if (!res || !res.value) return;
+    const d = JSON.parse(res.value);
+    if (d.projects)    localStorage.setItem('aquatrack_projects',    JSON.stringify(d.projects));
+    if (d.routes)      localStorage.setItem('aquatrack_routes',      JSON.stringify(d.routes));
+    if (d.assignments) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
+    if (d.specials)    localStorage.setItem('aquatrack_specials',    JSON.stringify(d.specials));
+    if (d.users) {
+      const existing = JSON.parse(localStorage.getItem('aquatrack_users') || '{}');
+      Object.keys(d.users).forEach(u => {
+        if (d.users[u].role !== 'admin') existing[u] = d.users[u];
+      });
+      localStorage.setItem('aquatrack_users', JSON.stringify(existing));
+    }
+  } catch(e) { console.warn('Config pull failed:', e); }
+}
+
+// ── Firebase login check (replaced with Appwrite config pull) ─────────────
+async function fbInit() {
+  if (_awReady) return true;
+  try {
+    const res = await awRequest('GET', `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?limit=1`);
+    _awReady = res !== null;
+    console.log(_awReady ? 'Appwrite ready ✅' : 'Appwrite offline');
+    return _awReady;
+  } catch(e) { return false; }
+}
+
+// ── Status indicator ──────────────────────────────────────────────────────
 function fbUpdateStatus(state) {
   const el = document.getElementById('fb-status');
   if (!el) return;
@@ -1212,34 +1272,10 @@ function fbUpdateStatus(state) {
   el.textContent = text;
 }
 
-// ── Auto-delete reports with expired photos (30 days) ─────────────────────
-async function fbCleanExpiredPhotos() {
-  if (!fbInit()) return;
-  try {
-    const cutoff = Date.now();
-    const snap = await _db.collection('reports')
-      .where('photoExp', '<', cutoff).get();
-    const batch = _db.batch();
-    snap.docs.forEach(doc => {
-      const data = doc.data();
-      // Only strip photos, keep report data
-      const cleaned = Object.assign({}, data);
-      ['photos','photosStart','photosEnd'].forEach(f => { if (cleaned[f]) cleaned[f] = []; });
-      cleaned.photosCleared = true;
-      batch.set(doc.ref, cleaned);
-    });
-    if (!snap.empty) await batch.commit();
-  } catch(e) {}
-}
-
-// Auto-sync every 60s when online
-setInterval(() => { if (navigator.onLine) fbSync(); }, 15000);
+// ── Auto-sync every 60s ───────────────────────────────────────────────────
+setInterval(() => { if (navigator.onLine) fbSync(); }, 60000);
 window.addEventListener('online', () => fbSync());
-// Clean expired photos once per day
-const _lastClean = localStorage.getItem('_fbLastClean');
-if (!_lastClean || Date.now() - parseInt(_lastClean) > 86400000) {
-  setTimeout(() => { fbCleanExpiredPhotos(); localStorage.setItem('_fbLastClean', Date.now()); }, 5000);
-}
+console.log('Appwrite configured ✅');
 </script>
 </head>
 <body>
@@ -2763,37 +2799,16 @@ function doLogin() {
     return;
   }
 
-  // Not found locally — try Firebase (new supervisor on new device)
-  fbInit().then(function(ready) {
-    if (!ready || !_db) {
+  // Not found locally — try Appwrite config (new supervisor on new device)
+  fbPullConfig().then(function() {
+    const users2 = getUsers();
+    if (users2[user] && users2[user].pass === pass) {
+      _doLoginSuccess(user);
+    } else {
       alert('Incorrect username or password.');
-      return;
     }
-    _db.collection('_config').doc('adminData').get().then(function(doc) {
-      if (!doc.exists) { alert('Incorrect username or password.'); return; }
-      const d = doc.data();
-      const fbUsers = d.users || {};
-      if (fbUsers[user] && fbUsers[user].pass === pass) {
-        const existing = getUsers();
-        // Merge Firebase supervisors into local — never overwrite admin or remove existing
-        if (fbUsers && Object.keys(fbUsers).length > 0) {
-          Object.keys(fbUsers).forEach(function(u) {
-            if (fbUsers[u].role !== 'admin') existing[u] = fbUsers[u];
-          });
-          saveUsers(existing);
-        }
-        if (d.projects)    localStorage.setItem('aquatrack_projects',    JSON.stringify(d.projects));
-        if (d.routes)      localStorage.setItem('aquatrack_routes',      JSON.stringify(d.routes));
-        if (d.assignments) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
-        if (d.specials)     localStorage.setItem('aquatrack_specials',     JSON.stringify(d.specials));
-        _doLoginSuccess(user);
-      } else {
-        alert('Incorrect username or password.');
-      }
-    }).catch(function(e) { 
-      console.warn('Firebase login check failed:', e);
-      alert('Incorrect username or password.');
-    });
+  }).catch(function() {
+    alert('Incorrect username or password.');
   });
 }
 
@@ -2806,41 +2821,11 @@ async function _doLoginSuccess(user) {
   _showLoginLoader('⏳ Fetching your data from cloud…');
 
   try {
-    const ready = await fbInit();
-    if (ready && _db) {
-      // Step 1: Pull admin config (projects, routes, assignments, users)
-      try {
-        const doc = await _db.collection('_config').doc('adminData').get();
-        if (doc.exists) {
-          const d = doc.data();
-          if (d.projects && d.projects.length)
-            localStorage.setItem('aquatrack_projects', JSON.stringify(d.projects));
-          if (d.routes)
-            localStorage.setItem('aquatrack_routes', typeof d.routes === 'string' ? d.routes : JSON.stringify(d.routes));
-          if (d.assignments)
-            localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
-          if (d.specials)
-            localStorage.setItem('aquatrack_specials', JSON.stringify(d.specials));
-          if (d.users && Object.keys(d.users).length > 0) {
-            const existing = getUsers();
-            // Merge: Firebase is authoritative for supervisor list,
-            // but NEVER remove a user that exists locally
-            Object.keys(d.users).forEach(function(u) {
-              if (d.users[u].role !== 'admin') existing[u] = d.users[u];
-            });
-            saveUsers(existing);
-          }
-        }
-      } catch(e) { console.warn('Config pull failed:', e); }
-
-      // Step 2: Pull all reports from Firestore (full sync)
-      _showLoginLoader('⏳ Loading reports…');
-      await fbSync();
-    } else {
-      // Offline — use cached data
-      _showLoginLoader('📵 Offline — using cached data…');
-      await new Promise(function(r){ setTimeout(r, 800); });
-    }
+    // Pull config from Appwrite
+    try { await fbPullConfig(); } catch(e) { console.warn('Config pull failed:', e); }
+    // Pull reports
+    _showLoginLoader('⏳ Loading reports…');
+    try { await fbSync(); } catch(e) { console.warn('Sync failed:', e); }
   } catch(e) {
     console.warn('Login sync error:', e);
   }
@@ -6761,49 +6746,16 @@ function getSpecialUsedNos(project, specialName) {
 // Returns projects the current user is allowed to see
 // Sync THIS supervisor's projects[] from assignments stored on this device
 async function syncSupervisorProjects(username) {
-  // Pull all config from Firebase — projects, routes, assignments
-  const ready = await fbInit();
-  if (ready && _db) {
-    try {
-      // Pull config doc (projects, routes, assignments saved by admin)
-      const doc = await _db.collection('_config').doc('adminData').get();
-      if (doc.exists) {
-        const d = doc.data();
-        // Sync projects — admin list is source of truth
-        if (d.projects && d.projects.length) {
-          localStorage.setItem('aquatrack_projects', JSON.stringify(d.projects));
-        }
-        // Sync routes — admin is source of truth
-        if (d.routes) {
-          // d.routes from Firestore is already an object — store as JSON string
-          const routesVal = (typeof d.routes === 'string') ? d.routes : JSON.stringify(d.routes);
-          localStorage.setItem('aquatrack_routes', routesVal);
-        }
-        // Sync user's assigned projects
-        if (d.assignments) {
-          localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
-          const users = getUsers();
-          if (users[username]) {
-            const allP = JSON.parse(localStorage.getItem('aquatrack_projects')||'[]');
-            users[username].projects = allP.filter(function(p) {
-              return (d.assignments[p]||[]).includes(username);
-            });
-            if (!users[username].projects.length) users[username].projects = allP.slice();
-            saveUsers(users);
-          }
-        }
-        populateAllProjectDropdowns();
-        showToast('✅ Routes & projects loaded');
-        if (typeof renderMapProjectTabs === 'function') renderMapProjectTabs();
-        if (typeof updateDashboard === 'function') updateDashboard();
-        // Redraw map after short delay to ensure Leaflet is ready
-        setTimeout(function() {
-          const proj = (typeof _mapActiveProject !== 'undefined' && _mapActiveProject) || (getVisibleProjects()[0]);
-          if (proj && typeof switchMapProject === 'function') switchMapProject(proj);
-        }, 800);
-      }
-    } catch(e) { console.warn('Supervisor sync failed:', e); }
-  }
+  // Pull config from Appwrite
+  try {
+    await fbPullConfig();
+    populateAllProjectDropdowns();
+    if (typeof updateDashboard === 'function') updateDashboard();
+    setTimeout(function() {
+      const proj = (typeof _mapActiveProject !== 'undefined' && _mapActiveProject) || (getVisibleProjects()[0]);
+      if (proj && typeof switchMapProject === 'function') switchMapProject(proj);
+    }, 800);
+  } catch(e) { console.warn('Supervisor sync failed:', e); }
 
   // Fallback: local assignments
   const assignments = getProjectAssignments();
@@ -6872,7 +6824,7 @@ function getAdminRoutes() {
   return JSON.parse(localStorage.getItem('aquatrack_routes') || 'null') || buildDefaultRoutes();
 }
 function fbPushAdminData() {
-  if (!_db || (currentRole !== 'admin' && currentRole !== 'pm')) return;
+  if (currentRole !== 'admin' && currentRole !== 'pm') return;
   try {
     const data = {
       projects:    getProjects(),
@@ -6882,7 +6834,16 @@ function fbPushAdminData() {
       users:       getUsers(),
       updatedAt:   Date.now()
     };
-    _db.collection('_config').doc('adminData').set(data).catch(()=>{});
+    awRequest('PATCH',
+      `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents/adminData`,
+      { data: { key: 'adminData', value: JSON.stringify(data).slice(0,65000) } }
+    ).then(res => {
+      if (!res) awRequest('POST',
+        `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents`,
+        { documentId: 'adminData', data: { key: 'adminData', value: JSON.stringify(data).slice(0,65000) },
+          permissions: ['read("any")','update("any")','delete("any")'] }
+      );
+    });
   } catch(e) {}
 }
 
@@ -6890,7 +6851,7 @@ function saveAdminRoutes(routes) {
   localStorage.setItem('aquatrack_routes', JSON.stringify(routes));
   // Push to Firebase so supervisors get updated routes on next login
   if (_db) {
-    _db.collection('_config').doc('routes').set({ routes: routes, updatedAt: Date.now() }).catch(()=>{});
+    // Routes sync via fbPushAdminData
   }
 }
 function buildDefaultRoutes() {
