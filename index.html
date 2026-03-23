@@ -1102,12 +1102,7 @@ async function fbSaveReport(data) {
       data_json:   JSON.stringify(d).slice(0,65000),
     };
 
-    // Check if exists — update or create
-    const existing = await awRequest('GET',
-      `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?queries[]=equal("data_json","${String(d.id)}")`
-    );
-
-    // Always create with unique ID based on report id
+    // Use report id as document ID
     const docId = 'r' + String(d.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,30);
 
     // Try update first
@@ -1149,7 +1144,8 @@ async function fbSync() {
     let allDocs = [], offset = 0, limit = 100;
     while (true) {
       const res = await awRequest('GET',
-        `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?limit=${limit}&offset=${offset}`
+        `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?queries[]=${encodeURIComponent(JSON.stringify({"method":"limit","values":[limit]}))}` +
+        `&queries[]=${encodeURIComponent(JSON.stringify({"method":"offset","values":[offset]}))}`
       );
       if (!res || !res.documents) break;
       allDocs = allDocs.concat(res.documents);
