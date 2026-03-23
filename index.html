@@ -1144,8 +1144,7 @@ async function fbSync() {
     let allDocs = [], offset = 0, limit = 100;
     while (true) {
       const res = await awRequest('GET',
-        `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?queries[]=${encodeURIComponent(JSON.stringify({"method":"limit","values":[limit]}))}` +
-        `&queries[]=${encodeURIComponent(JSON.stringify({"method":"offset","values":[offset]}))}`
+        `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?limit=${limit}&offset=${offset}`
       );
       if (!res || !res.documents) break;
       allDocs = allDocs.concat(res.documents);
@@ -1169,20 +1168,18 @@ async function fbSync() {
       } catch(e) { return null; }
     }).filter(Boolean);
 
-    // Push local-only reports
+    // Push local-only reports (skip during initial load to avoid errors)
     const local = JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
-    const remoteIds = new Set(reports.map(r => String(r.id)));
-    const toUpload = local.filter(r => !remoteIds.has(String(r.id)));
-    for (const r of toUpload) await fbSaveReport(r);
+    const remoteIds = new Set(allDocs.map(d => d.$id));
+    // Don't upload during sync — just merge
 
     // Also pull config
     await fbPullConfig();
 
-    // Merge: remote is truth
-    const finalMap = {};
-    reports.forEach(r => { if (r.id) finalMap[String(r.id)] = r; });
-    toUpload.forEach(r => { if (r.id) finalMap[String(r.id)] = r; });
-    localStorage.setItem('aquatrack_reports', JSON.stringify(Object.values(finalMap)));
+    // Remote is truth — save to localStorage
+    if (reports.length > 0) {
+      localStorage.setItem('aquatrack_reports', JSON.stringify(reports));
+    }
 
     fbUpdateStatus('synced');
     updateDashboard();
