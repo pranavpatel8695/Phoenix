@@ -1139,10 +1139,12 @@ async function fbDeleteReport(id) {
 
 // ── Sync: pull all reports from Appwrite ──────────────────────────────────
 async function fbSync() {
+  console.log('fbSync started');
   fbUpdateStatus('syncing');
   try {
     let allDocs = [], offset = 0, limit = 100;
     while (true) {
+      console.log('Fetching offset', offset);
       const res = await awRequest('GET',
         `/databases/${AW_DATABASE}/collections/${AW_COLLECTION}/documents?limit=${limit}&offset=${offset}`
       );
