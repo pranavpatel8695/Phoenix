@@ -1217,9 +1217,20 @@ async function fbSync() {
     // Also pull config
     await fbPullConfig();
 
-    // Remote is truth — save to localStorage
+    // Remote is truth — deduplicate and save
     if (reports.length > 0) {
-      localStorage.setItem('aquatrack_reports', JSON.stringify(reports));
+      const deduped = Object.values(
+        reports.reduce((m, r) => { if (r.id) m[String(r.id)] = r; return m; }, {})
+      );
+      localStorage.setItem('aquatrack_reports', JSON.stringify(deduped));
+    }
+
+    // Don't overwrite projects if they exist locally
+    const localProjects = JSON.parse(localStorage.getItem('aquatrack_projects') || '[]');
+    if (localProjects.length === 0 && reports.length > 0) {
+      // Extract unique projects from reports
+      const rProjects = [...new Set(reports.map(r => r.project).filter(Boolean))];
+      if (rProjects.length) localStorage.setItem('aquatrack_projects', JSON.stringify(rProjects));
     }
 
     fbUpdateStatus('synced');
@@ -1268,9 +1279,10 @@ async function fbPullConfig() {
     console.log('Config pull result:', res ? 'found' : 'not found', res?.value?.slice?.(0,100));
     if (!res || !res.value) return;
     const d = JSON.parse(res.value);
-    if (d.projects)    localStorage.setItem('aquatrack_projects',    JSON.stringify(d.projects));
-    if (d.routes)      localStorage.setItem('aquatrack_routes',      JSON.stringify(d.routes));
-    if (d.assignments) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
+    // Only update projects if Appwrite has them (not empty)
+    if (d.projects && d.projects.length) localStorage.setItem('aquatrack_projects', JSON.stringify(d.projects));
+    if (d.routes && Object.keys(d.routes).length) localStorage.setItem('aquatrack_routes', JSON.stringify(d.routes));
+    if (d.assignments && Object.keys(d.assignments).length) localStorage.setItem('aquatrack_assignments', JSON.stringify(d.assignments));
     if (d.specials)    localStorage.setItem('aquatrack_specials',    JSON.stringify(d.specials));
     if (d.users) {
       const existing = JSON.parse(localStorage.getItem('aquatrack_users') || '{}');
@@ -2895,6 +2907,17 @@ async function _doLoginSuccess(user) {
   // Push admin config if admin
   if (currentRole === 'admin') {
     syncUserProjects();
+    // Auto-seed projects from reports if empty
+    const existingProjs = JSON.parse(localStorage.getItem('aquatrack_projects') || '[]');
+    if (!existingProjs.length) {
+      const allReps = JSON.parse(localStorage.getItem('aquatrack_reports') || '[]');
+      const seedProjs = [...new Set(allReps.map(r => r.project).filter(Boolean))];
+      if (seedProjs.length) {
+        localStorage.setItem('aquatrack_projects', JSON.stringify(seedProjs));
+        populateAllProjectDropdowns();
+        updateDashboard();
+      }
+    }
     setTimeout(function() { fbInit().then(function(ok){ if(ok) fbPushAdminData(); }); }, 1000);
   }
 
