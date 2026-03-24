@@ -5241,7 +5241,7 @@ function deleteReport(id) {
 
   // Hard block if dependents exist (skip for admin force-delete)
   var depCheck = checkDeleteDependency(r);
-  if (depCheck.blocked && currentRole !== 'admin') {
+  if (depCheck.blocked && currentRole === 'supervisor') {
     showBlockedModal('Cannot Delete', depCheck.reason);
     return;
   }
