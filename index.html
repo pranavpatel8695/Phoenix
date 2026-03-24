@@ -2934,7 +2934,8 @@ async function _doLoginSuccess(user) {
   try {
     // Pull config from Appwrite
     try { await fbPullConfig(); } catch(e) { console.warn('Config pull failed:', e); }
-    // Pull reports
+    // Pull reports — force sync by resetting lock
+    _syncInProgress = false;
     _showLoginLoader('⏳ Loading reports…');
     try { await fbSync(); } catch(e) { console.warn('Sync failed:', e); }
   } catch(e) {
