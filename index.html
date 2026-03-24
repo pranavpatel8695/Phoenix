@@ -4136,6 +4136,34 @@ function getGPS(latId, lonId) {
   }
 }
 
+// ========== IMAGE COMPRESSION ==========
+function compressToTargetSize(dataUrl, targetKB) {
+  targetKB = targetKB || 50;
+  return new Promise(function(resolve) {
+    if (!dataUrl || !dataUrl.startsWith('data:image')) { resolve(dataUrl); return; }
+    const img = new Image();
+    img.onload = function() {
+      let w = img.width, h = img.height;
+      const maxDim = 640;
+      if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+      if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      let lo = 0.05, hi = 0.7, result = canvas.toDataURL('image/jpeg', 0.3);
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        const attempt = canvas.toDataURL('image/jpeg', mid);
+        const kb = Math.round(attempt.length * 0.75 / 1024);
+        if (kb <= targetKB) { lo = mid; result = attempt; } else hi = mid;
+      }
+      resolve(result);
+    };
+    img.onerror = function() { resolve(dataUrl); };
+    img.src = dataUrl;
+  });
+}
+
 // ========== PHOTOS ==========
 function previewPhotosGPS(input, previewId, latId, lonId) {
   const prev = typeof previewId === 'string' ? document.getElementById(previewId) : previewId;
