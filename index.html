@@ -1331,6 +1331,16 @@ async function fbPullConfig() {
       if (adminLocal) existing['admin'] = adminLocal; // never overwrite admin from Appwrite
       localStorage.setItem('aquatrack_users', JSON.stringify(existing));
     }
+    // Pull deleted IDs so all devices respect deletions
+    try {
+      const dres = await awRequest('GET', `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents/deletedIds`);
+      if (dres?.value) {
+        const remoteDeleted = JSON.parse(dres.value);
+        const localDeleted = JSON.parse(localStorage.getItem('aquatrack_deleted') || '[]');
+        const merged = [...new Set([...localDeleted, ...remoteDeleted])];
+        localStorage.setItem('aquatrack_deleted', JSON.stringify(merged));
+      }
+    } catch(e) {}
     // Also pull users from separate document
     try {
       const ures = await awRequest('GET', `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents/usersData`);
@@ -5304,6 +5314,12 @@ function deleteReport(id) {
       const blacklist = JSON.parse(localStorage.getItem('aquatrack_deleted') || '[]');
       if (!blacklist.includes(String(id))) blacklist.push(String(id));
       localStorage.setItem('aquatrack_deleted', JSON.stringify(blacklist));
+      // Push blacklist to Appwrite so all devices respect it
+      awRequest('PATCH', `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents/deletedIds`,
+        { data: { key: 'deletedIds', value: JSON.stringify(blacklist) } }
+      ).then(r => { if (!r) awRequest('POST', `/databases/${AW_DATABASE}/collections/${AW_CONFIG_COL}/documents`,
+        { documentId: 'deletedIds', data: { key: 'deletedIds', value: JSON.stringify(blacklist) }, permissions: ['read("any")','update("any")','delete("any")'] }
+      ); });
       fbUpdateStatus('saving');
       fbDeleteReport(id).then(function(ok) {
         fbUpdateStatus(ok ? 'synced' : 'offline');
