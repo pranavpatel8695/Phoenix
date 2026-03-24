@@ -1250,15 +1250,13 @@ async function fbSync() {
 
     // Remote is truth — deduplicate and save
     const blacklist = new Set(JSON.parse(localStorage.getItem('aquatrack_deleted') || '[]'));
-    if (reports.length > 0) {
-      const deduped = Object.values(
-        reports.reduce((m, r) => {
-          if (r.id && !blacklist.has(String(r.id))) m[String(r.id)] = r;
-          return m;
-        }, {})
-      );
-      localStorage.setItem('aquatrack_reports', JSON.stringify(deduped));
-    }
+    const deduped = Object.values(
+      reports.reduce((m, r) => {
+        if (r.id && !blacklist.has(String(r.id))) m[String(r.id)] = r;
+        return m;
+      }, {})
+    );
+    localStorage.setItem('aquatrack_reports', JSON.stringify(deduped));
 
     // Don't overwrite projects if they exist locally
     const localProjects = JSON.parse(localStorage.getItem('aquatrack_projects') || '[]');
