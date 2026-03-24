@@ -1645,7 +1645,7 @@ console.log('Appwrite configured ✅');
           <div class="photo-input-wrap" onclick="document.getElementById('exc-photos-start').click()">
             <div class="pi-icon">📷</div><p>Tap to add photos</p>
             <input type="file" id="exc-photos-start" multiple accept="image/*"
-              onchange="limitPhotos(this,2);previewPhotosGPS(this,'exc-photo-prev-start','exc-lat','exc-lon')">
+              onchange="limitPhotos(this,1);previewPhotosGPS(this,'exc-photo-prev-start','exc-lat','exc-lon')">
           </div>
           <div class="photo-previews" id="exc-photo-prev-start"></div>
         </div>
@@ -1655,7 +1655,7 @@ console.log('Appwrite configured ✅');
           <div class="photo-input-wrap" onclick="document.getElementById('exc-photos-end').click()">
             <div class="pi-icon">📷</div><p>Tap to add photos</p>
             <input type="file" id="exc-photos-end" multiple accept="image/*"
-              onchange="limitPhotos(this,2);previewPhotosGPS(this,'exc-photo-prev-end','exc-lat2','exc-lon2')">
+              onchange="limitPhotos(this,1);previewPhotosGPS(this,'exc-photo-prev-end','exc-lat2','exc-lon2')">
           </div>
           <div class="photo-previews" id="exc-photo-prev-end"></div>
         </div>
@@ -1718,7 +1718,7 @@ console.log('Appwrite configured ✅');
           <div class="photo-input-wrap" onclick="document.getElementById('pipe-photos-start').click()">
             <div class="pi-icon">📷</div><p>Tap to add photos</p>
             <input type="file" id="pipe-photos-start" multiple accept="image/*"
-              onchange="limitPhotos(this,2);previewPhotosGPS(this,'pipe-photo-prev-start','pipe-lat','pipe-lon')">
+              onchange="limitPhotos(this,1);previewPhotosGPS(this,'pipe-photo-prev-start','pipe-lat','pipe-lon')">
           </div>
           <div class="photo-previews" id="pipe-photo-prev-start"></div>
         </div>
@@ -1728,7 +1728,7 @@ console.log('Appwrite configured ✅');
           <div class="photo-input-wrap" onclick="document.getElementById('pipe-photos-end').click()">
             <div class="pi-icon">📷</div><p>Tap to add photos</p>
             <input type="file" id="pipe-photos-end" multiple accept="image/*"
-              onchange="limitPhotos(this,2);previewPhotosGPS(this,'pipe-photo-prev-end','pipe-lat2','pipe-lon2')">
+              onchange="limitPhotos(this,1);previewPhotosGPS(this,'pipe-photo-prev-end','pipe-lat2','pipe-lon2')">
           </div>
           <div class="photo-previews" id="pipe-photo-prev-end"></div>
         </div>
@@ -1842,7 +1842,7 @@ console.log('Appwrite configured ✅');
           <div class="photo-input-wrap" onclick="document.getElementById('ref-photos-start').click()">
             <div class="pi-icon">📷</div><p>Tap to add photos</p>
             <input type="file" id="ref-photos-start" multiple accept="image/*"
-              onchange="limitPhotos(this,2);previewPhotosGPS(this,'ref-photo-prev-start','ref-lat','ref-lon')">
+              onchange="limitPhotos(this,1);previewPhotosGPS(this,'ref-photo-prev-start','ref-lat','ref-lon')">
           </div>
           <div class="photo-previews" id="ref-photo-prev-start"></div>
         </div>
@@ -1852,7 +1852,7 @@ console.log('Appwrite configured ✅');
           <div class="photo-input-wrap" onclick="document.getElementById('ref-photos-end').click()">
             <div class="pi-icon">📷</div><p>Tap to add photos</p>
             <input type="file" id="ref-photos-end" multiple accept="image/*"
-              onchange="limitPhotos(this,2);previewPhotosGPS(this,'ref-photo-prev-end','ref-lat2','ref-lon2')">
+              onchange="limitPhotos(this,1);previewPhotosGPS(this,'ref-photo-prev-end','ref-lat2','ref-lon2')">
           </div>
           <div class="photo-previews" id="ref-photo-prev-end"></div>
         </div>
@@ -4113,7 +4113,8 @@ function getGPS(latId, lonId) {
 
 // ========== GPS-STAMPED PHOTOS ==========
 function previewPhotosGPS(input, previewId, latId, lonId) {
-  const prev = document.getElementById(previewId);
+  const prev = typeof previewId === 'string' ? document.getElementById(previewId) : previewId;
+  if (!prev) return;
   prev.innerHTML = '';
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' });
@@ -4163,7 +4164,7 @@ function previewPhotosGPS(input, previewId, latId, lonId) {
 
 // Collect compressed photos (with embedded GPS) from preview div
 function collectPhotosFromPreview(previewId) {
-  var prev = document.getElementById(previewId);
+  var prev = typeof previewId === 'string' ? document.getElementById(previewId) : previewId;
   if (!prev) return [];
   return Array.from(prev.querySelectorAll('img.photo-preview')).map(function(img) {
     return { src: img.src, lat: img.dataset.lat||null, lon: img.dataset.lon||null };
