@@ -3858,6 +3858,24 @@ function checkDependency(type, data) {
   }
   const covered = getCoveredRanges(data.project, data.route, prereqType);
   const gaps    = findUncovered(data.from, data.to, covered);
+
+  // Date check — prereq must be done on or before this report's date
+  if (gaps.length === 0 && data.date) {
+    const reports = getReports();
+    const prereqReports = reports.filter(r =>
+      r.project === data.project && r.route === data.route &&
+      r.type === prereqType && r.from < data.to && r.to > data.from
+    );
+    const dateViolations = prereqReports.filter(r => r.date > data.date);
+    if (dateViolations.length) {
+      return {
+        ok: false, gaps: [],
+        prereqLabel, myLabel,
+        dateError: prereqLabel + ' for this chainage was done on ' + dateViolations.map(r=>r.date).join(', ') + '. ' + myLabel + ' date cannot be earlier.'
+      };
+    }
+  }
+
   return { ok: gaps.length === 0, gaps, prereqLabel, myLabel };
 }
 
@@ -4738,6 +4756,10 @@ function submitReport(type) {
   // Dependency check
   const depResult = checkDependency(type, data);
   if (!depResult.ok) {
+    if (depResult.dateError) {
+      showToast('🚫 ' + depResult.dateError);
+      return;
+    }
     _pendingSubmitData = data; _pendingSubmitType = type;
     document.getElementById('depTitle').textContent =
       depResult.myLabel + ' blocked by missing ' + depResult.prereqLabel;
